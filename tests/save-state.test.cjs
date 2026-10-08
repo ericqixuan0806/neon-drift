@@ -17,6 +17,7 @@ const inlineScript = [...source.matchAll(/<script>([\s\S]*?)<\/script>/g)][0]?.[
 function bootGame(storage) {
   const windowEvents = new Map();
   const documentEvents = new Map();
+  const canvasEvents = new Map();
   const register = (events, type, handler) => events.set(type, handler);
   const makeButtons = (kind, names) => names.map(name => {
     const handlers = new Map();
@@ -24,12 +25,13 @@ function bootGame(storage) {
       addEventListener: (type, handler) => handlers.set(type, handler),
       click() { if (!this.disabled) handlers.get('click')?.(); } };
   });
-  const accessibleActions = makeButtons('action', ['start','daily','pause','retry','menu','shop','levels','missions','stats','settings','difficulty','export']);
+  const accessibleActions = makeButtons('action', ['start','daily','pause','retry','menu','ship','shop','levels','missions','stats','settings','difficulty','export']);
   const accessibleSettings = makeButtons('setting', ['0','1','2','3','4','5','6']);
   const canvasContext = {};
   const elements = {
     c: { clientWidth: 800, clientHeight: 600, getContext: () => canvasContext,
-      addEventListener() {}, getBoundingClientRect: () => ({ left: 0, top: 0 }), focus() {} },
+      addEventListener: (type, handler) => register(canvasEvents, type, handler),
+      setPointerCapture() {}, getBoundingClientRect: () => ({ left: 0, top: 0 }), focus() {} },
     'game-status': { textContent: '' },
   };
   const document = {
@@ -40,13 +42,13 @@ function bootGame(storage) {
     createElement: () => ({ click() {} }),
   };
   const sandbox = {
-    document, localStorage: storage, devicePixelRatio: 1, windowEvents, documentEvents, accessibleActions, accessibleSettings,
+    document, localStorage: storage, devicePixelRatio: 1, windowEvents, documentEvents, canvasEvents, accessibleActions, accessibleSettings,
     matchMedia: () => ({ matches: false }),
     addEventListener: (type, handler) => register(windowEvents, type, handler), requestAnimationFrame() {},
     CanvasRenderingContext2D: function CanvasRenderingContext2D() {},
     performance: { now: () => 1000 },
   };
-  vm.runInNewContext(`${inlineScript}\nglobalThis.probe=()=>({state:st,meta:M,readOnly:saveReadOnly,reason:saveReason,start,pause,end,sv,refreshAccessibleControls,keys:()=>[kl,kr,drag],windowEvents,documentEvents,accessibleActions,accessibleSettings});`, sandbox);
+  vm.runInNewContext(`${inlineScript}\nglobalThis.probe=()=>({state:st,meta:M,readOnly:saveReadOnly,reason:saveReason,start,pause,end,sv,advanceSkin,ok,skin:()=>skin,skinName:()=>SK[skin][0],skinColor:()=>SK[skin][1],geometry:()=>({S,W,H}),refreshAccessibleControls,keys:()=>[kl,kr,drag],windowEvents,documentEvents,canvasEvents,accessibleActions,accessibleSettings});`, sandbox);
   return sandbox.probe;
 }
 
@@ -204,4 +206,26 @@ test('accessible DOM controls can start a run, reach settings, and change prefer
   assert.equal(game().meta.s.cb, 1);
   action('menu').click();
   assert.equal(game().state, 'menu');
+});
+
+test('ship color button cycles the five core style-guide colorways without score gates', () => {
+  const values = new Map([['neon-drift-best', '0']]);
+  const game = bootGame({ getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)) });
+  const expected = [
+    ['Ember', '#ff9f43'], ['Mint', '#5dffb0'], ['Violet', '#b46bff'], ['Gold', '#ffd23f'], ['Classic', '#e8f0ff'],
+  ];
+  const { S, W, H } = game().geometry();
+  const shipButtonClick = game().canvasEvents.get('pointerdown');
+  for (const [name, color] of expected) {
+    shipButtonClick({ preventDefault() {}, pointerId: 1, clientX: S * W / 2, clientY: S * (H / 2 + 86) });
+    assert.equal(game().skinName(), name);
+    assert.equal(game().skinColor(), color);
+  }
+  assert.equal(values.get('neon-drift-skin'), '0');
+
+  game().meta.tb = 1;
+  game().advanceSkin();
+  assert.equal(game().skinName(), 'Ember');
+  for (let i = 0; i < 4; i++) game().advanceSkin();
+  assert.equal(game().skinName(), 'Rose');
 });
