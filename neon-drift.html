@@ -39,11 +39,11 @@ const BN=[['Scout Drone','Grid Warden'],['Comet Imp','Nebula Titan'],['Cinder Wi
 function stg(i,clr){const L=M.lv[i]||(M.lv[i]={cl:0,sc:0,c:0,k:0,b:0});if(clr)L.cl=1;if(sc>=L.sc){L.sc=Math.floor(sc);L.g=Math.floor(sc-s0);L.c=rc;L.k=rk;L.b=rb}}
 function grade(L){const r=L.c*3+L.k*4+L.b*60+(L.g||0)/8;return r>=220?'S':r>=140?'A':r>=70?'B':'C'}
 function wr(t,mw){ctx.font="600 11px 'Chakra Petch',system-ui,sans-serif";const L=[];let l='';for(const x of t.split(' ')){const q=l?l+' '+x:x;if(ctx.measureText(q).width>mw&&l){L.push(l);l=x}else l=q}L.push(l);return L}
-function obsArt(x,y,i,h,lk){const c=lk?'#2a2a3a':i==1?'#ffb347':'hsl('+h+',100%,62%)';ctx.save();ctx.translate(x,y);ctx.shadowColor=c;ctx.shadowBlur=lk?0:12;ctx.fillStyle=c;
+function obsArt(x,y,i,h,lk){const c=lk?'#2a2a3a':i==1?'#ffb347':PK;ctx.save();ctx.translate(x,y);ctx.shadowColor=c;ctx.shadowBlur=lk?0:12;ctx.fillStyle=c;
 if(i==0){rr(-13,-11,26,22,4);ctx.fill()}else if(i==1){ctx.beginPath();ctx.moveTo(0,-14);ctx.lineTo(14,0);ctx.lineTo(0,14);ctx.lineTo(-14,0);ctx.closePath();ctx.fill()}else{rr(-32,-6,64,12,3);ctx.fill()}
 ctx.shadowBlur=0;ctx.restore();if(lk)txt('?',x,y+6,16,'#667')}
-function bossArt(x,y,k,t2,big,lk,fl){const c=lk?'#2a2a3a':fl?'#fff':'hsl('+TH[t2][2]+',100%,62%)',n=[6,3,8,4,5,7][t2];ctx.save();ctx.translate(x,y);ctx.scale(k,k);
-if(big){ctx.fillStyle=lk?'#1d1d2a':'hsla('+TH[t2][2]+',100%,45%,.5)';ctx.beginPath();for(let i=0;i<n;i++){const a=i/n*6.283+.4;ctx.lineTo(Math.cos(a)*34,Math.sin(a)*22)}ctx.closePath();ctx.fill()}
+function bossArt(x,y,k,t2,big,lk,fl){const c=lk?'#2a2a3a':fl?'#fff':PK,n=[6,3,8,4,5,7][t2];ctx.save();ctx.translate(x,y);ctx.scale(k,k);
+if(big){const ga=ctx.globalAlpha;ctx.globalAlpha=lk?ga:ga*.5;ctx.fillStyle=lk?'#1d1d2a':c;ctx.beginPath();for(let i=0;i<n;i++){const a=i/n*6.283+.4;ctx.lineTo(Math.cos(a)*34,Math.sin(a)*22)}ctx.closePath();ctx.fill();ctx.globalAlpha=ga}
 ctx.shadowColor=c;ctx.shadowBlur=lk?0:18;ctx.fillStyle=c;ctx.beginPath();for(let i=0;i<n;i++){const a=i/n*6.283-1.57;ctx.lineTo(Math.cos(a)*28,Math.sin(a)*(t2==1?22:16))}ctx.closePath();ctx.fill();ctx.shadowBlur=0;
 ctx.fillStyle='#07070f';ctx.fillRect(-18,-5,13,6);ctx.fillRect(5,-5,13,6);if(!lk){ctx.fillStyle='#fff';ctx.fillRect(-14,-3,5,3);ctx.fillRect(9,-3,5,3)}
 const m3=last/1000;for(const sd of big?[-1,1,-2,2]:[-1,1]){const qx=(Math.abs(sd)>1?58:big?38:40)*Math.sign(sd),qy=Math.sin(m3*2.5+sd)*6;ctx.strokeStyle=c;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(sd>0?20:-20,0);ctx.lineTo(qx,qy);ctx.stroke();ctx.fillStyle=lk?'#2a2a3a':fl?'#fff':c;ctx.beginPath();ctx.arc(qx,qy,6,0,6.28);ctx.fill()}
