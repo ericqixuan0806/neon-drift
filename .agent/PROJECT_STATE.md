@@ -45,3 +45,11 @@
 - 阶段 3 已完成：新增 pointercancel、隐藏页面释放输入并暂停、resize 逻辑坐标/飞船边界的确定性回归覆盖。
 - 阶段 4 已完成。最新 `node --test tests/save-state.test.cjs`：21 项通过；五个项目文件无尾随空格。源码、测试、README、roadmap、项目状态已同步到现有 GitHub `main` 并逐文件回读匹配。源码提交 `cc286d4c02a286d93ff1110201ffbdff9d0ec0c1`，测试提交 `1a1b86f62f29d3d03f9c8f3f04f4355fe6a37d04`，README 提交 `d9129ed0216f3711f3b49a1c6f9aaf413e6861d7`。
 - 测试使用 Node VM 和模拟浏览器 API，不代表真实浏览器画面、触控、读屏器或页面在线渲染已验收；这些保留为人工/真实设备验收项。GitHub `main` 已更新，GitHub Pages 当前仍沿用原有 `index.html` 入口和公开地址。
+
+## 首帧绘制回归修复（2026-10-09）
+
+- 反馈现象：页面只看到深色背景板。
+- 复现证据：执行真实游戏代码的首个动画帧时抛出 `ReferenceError: n is not defined`。背景先画出，随后 `draw()` 在星点/速度条绘制处中断。
+- 根因与修复：减少动态效果改动将 `n` 放进 `bgd()` 局部作用域，但 `draw()` 仍复用该变量。现已让 `draw()` 自行取得动效时钟，并通过 `motion()` 应用系统偏好。
+- 新增帧执行测试及菜单、升级、关卡、任务、统计、设置、游玩、暂停、结束/重试画面覆盖；最新 `node --test tests/save-state.test.cjs` 为 23/23 通过。
+- GitHub `main` 同步和逐文件回读待本次修复发布后更新；浏览器视觉仍需线上/真实设备确认。
