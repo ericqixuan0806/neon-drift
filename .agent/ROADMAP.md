@@ -64,3 +64,29 @@
 
 - 桌面/窄屏/触屏实际操作、读屏器和高对比度视觉检查、商店刷新后存档、在线 Pages 实际渲染、首局到 Boss 的手感及难度/价格/奖励节奏反馈。
 - 自动模拟、源码阅读和仓库回读都不能代替上面的人工或真实浏览器证据。收到实玩证据后，再选择有复现依据的内容平衡问题逐项调整。
+
+## 长期开发周期：Playable Release Quality（2026-10-09）
+
+### 高标准目标
+
+在保留现有近黑底、青色反馈、粉色危险、金色奖励、霓虹发光、字体、游戏规则、单文件入口和存档格式的前提下，让完整玩家旅程没有输入或导航死路：从主菜单进入商店与关卡、购买升级/技能、开始并操控一局、暂停/继续、应对首领、结束/重试、刷新恢复进度。Canvas 鼠标/触控、键盘与辅助 DOM 控件调用同一组有状态保护的动作。验收标准是约定的核心动作矩阵 100% 有可达路径且有确定性回归检查，并且没有已知首帧异常、存档丢失或导航死路。
+
+### 研究和设计边界
+
+- 研究样例用于检查街机游戏的聚焦体验和操作预期，不据此照搬风格、难度或经济系统。已存在的 Super Hexagon 参考只支持保持简洁的街机定位，不支持改变本游戏平衡。
+- W3C Button Pattern 规定焦点按钮可由 Enter/Space 激活；游戏级快捷键不得截走这些原生操作。[W3C Button Pattern](https://www.w3.org/WAI/ARIA/apg/patterns/button/)
+- W3C WCAG 2.2 SC 2.5.8 的最小指针目标为 24×24 CSS px 或满足其间距例外；新增焦点操作继续复用现有暗底、青框和金色焦点，不遮挡主游戏。[W3C target size](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum)
+- MDN Pointer Events 说明 pointer id 用来区分不同输入点，捕获会在 pointerup/pointercancel 时释放；每根手指的结束/取消只清理自己的拖动状态。[MDN Pointer Events](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events)；[setPointerCapture](https://developer.mozilla.org/en-US/docs/Web/API/Element/setPointerCapture)
+- 不更改 `{version:1,data:...}`、`neon-drift-meta`、普通/每日日期语义、价格奖励、难度、碰撞尺寸或解锁条件；除非测试暴露确凿回归，不做游戏平衡猜测。
+- 本轮仅改 Neon Drift 项目内源码、测试、说明与计划。继续保留不依赖构建工具的独立 HTML。
+
+### 阶段顺序
+
+详细交付、依赖、输入矩阵和通过标准见 [MILESTONES.md](./MILESTONES.md)。顺序为：M0 锁定动作/状态验收矩阵；M1 共享动作和指针/键盘归属；M2 补齐辅助 DOM 的购买、分页、首领继续和技能操作；M3 补齐短而准确的帮助与结算反馈；M4 跑完整回归、文档核验并发布。
+
+### 本轮策略模型和执行约束
+
+- 计划版本：v1，2026-10-09。全项目阶段计划由配置的 `strategic_planner` Astra 只读制定；Root 为唯一代码写入者，按阶段实施和验收。
+- 运行配置将角色固定到 Astra；此处记录为已使用配置战略规划角色，不将浏览器/设备实际验收推定为完成。
+- 目标窗口估计 160 分钟编码/验证，另预留约 20 分钟；若集成风险挤占时间，先推迟 M3 polish，保证 M1/M2 正确性和 M4 核验。
+- 真实浏览器、触控、读屏器、窄屏视觉和实玩难度仍是单独的人工验收项。
