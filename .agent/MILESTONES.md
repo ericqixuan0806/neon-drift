@@ -36,13 +36,15 @@
 - 实施：补充菜单技能/暂停说明、暂停页技能与危险/奖励提示；读屏状态摘要本局分数、新纪录/最佳分、金币、时间和到达关卡。`end()` 增加 `play` 状态保护，重复调用不会重复计数。
 - 验收：文案与现有动作匹配、保留视觉令牌，回归套件 29/29 通过。
 
-## M4 — 整体验证、发布和证据（进行中）
+## M4 — 整体验证、发布和证据（自动化与发布验收完成）
 
 - 扩展现有 Node VM 回归：动作矩阵、多指输入、焦点按键、成功/失败购买、存档写入/回读、核心多状态帧绘制、boss 胜利与结束重试、普通/减少动态效果、几何。
 - 已覆盖补充场景：6 个主题连续首帧；标准三次受击、死亡慢放、结果播报、等待 600ms 后 DOM Retry；Boss 继续的等待与状态门；owner 拖动期间第二指可触发技能且其 pointerup 不释放 owner；设置 aria-pressed/实时状态。
 - 运行 `node --test tests/save-state.test.cjs`、内嵌 JS 语法检查、格式/空白检查；逐项回顾源码、README 和本路线图。
 - 发布前读取当前远端文件/SHA；使用 GitHub API 按需更新本次改动，随后回读并比较文件内容。Pages 文件已更新和 Pages 页面真实渲染是两类证据。
 - 验收：全部自动检查通过；当前源与已发布源逐字匹配；保存有效、损坏及未来版本的原始数据不丢；没有将模拟器说成真实浏览器/设备验收。
+- 最终结果：`node --test tests/save-state.test.cjs` 29/29，内嵌脚本语法包含在该套件中；六个交付文件无尾随空格。源码已发布到 `ericqixuan0806/neon-drift` `main`，部署源提交 `91eff91da9be392ec5c5ce6a35b23e24d811eb2a`；测试提交 `d6095a1ffdf517f0e1e5ed63e78a93c1a8bf347b`。GitHub API 回读确认 `neon-drift.html`、测试、README、roadmap、milestones、project state 和 `index.html` 共七项内容 blob 与本地完全一致。
+- 发布入口：[GitHub Pages](https://ericqixuan0806.github.io/neon-drift/)，沿用 main 根目录的 `index.html`。此次只确认 Pages 部署源已更新，页面在线视觉/交互仍待浏览器或真实设备检查。
 
 ## 完整自动输入矩阵
 
