@@ -14,10 +14,11 @@ const api = sandbox.api;
 const plain = value => JSON.parse(JSON.stringify(value));
 const inlineScript = [...source.matchAll(/<script>([\s\S]*?)<\/script>/g)][0]?.[1];
 
-function bootGame(storage) {
+function bootGame(storage, { storageGetterThrows = false, reducedMotion = false } = {}) {
   const windowEvents = new Map();
   const documentEvents = new Map();
   const canvasEvents = new Map();
+  const mediaEvents = new Map();
   const register = (events, type, handler) => events.set(type, handler);
   const makeButtons = (kind, names) => names.map(name => {
     const handlers = new Map();
@@ -35,6 +36,7 @@ function bootGame(storage) {
     'game-status': { textContent: '' },
   };
   const document = {
+    hidden: false,
     getElementById: id => elements[id],
     addEventListener: (type, handler) => register(documentEvents, type, handler),
     querySelectorAll: selector => selector.includes('[data-action]') ? accessibleActions : accessibleSettings,
@@ -42,13 +44,16 @@ function bootGame(storage) {
     createElement: () => ({ click() {} }),
   };
   const sandbox = {
-    document, localStorage: storage, devicePixelRatio: 1, windowEvents, documentEvents, canvasEvents, accessibleActions, accessibleSettings,
-    matchMedia: () => ({ matches: false }),
+    document, devicePixelRatio: 1, windowEvents, documentEvents, canvasEvents, mediaEvents, accessibleActions, accessibleSettings,
+    matchMedia: query => ({ matches: query.includes('prefers-reduced-motion') && reducedMotion,
+      addEventListener: (type, handler) => mediaEvents.set(type, handler),
+      addListener: handler => mediaEvents.set('change', handler) }),
     addEventListener: (type, handler) => register(windowEvents, type, handler), requestAnimationFrame() {},
     CanvasRenderingContext2D: function CanvasRenderingContext2D() {},
     performance: { now: () => 1000 },
   };
-  vm.runInNewContext(`${inlineScript}\nglobalThis.probe=()=>({state:st,meta:M,readOnly:saveReadOnly,reason:saveReason,start,pause,end,sv,advanceSkin,ok,skin:()=>skin,skinName:()=>SK[skin][0],skinColor:()=>SK[skin][1],geometry:()=>({S,W,H}),refreshAccessibleControls,keys:()=>[kl,kr,drag],windowEvents,documentEvents,canvasEvents,accessibleActions,accessibleSettings});`, sandbox);
+  Object.defineProperty(sandbox, 'localStorage', { get() { if (storageGetterThrows) throw new Error('storage denied'); return storage; } });
+  vm.runInNewContext(`${inlineScript}\nglobalThis.probe=()=>({state:st,meta:M,readOnly:saveReadOnly,reason:saveReason,start,pause,end,hit,sv,advanceSkin,ok,skin:()=>skin,skinName:()=>SK[skin][0],skinColor:()=>SK[skin][1],geometry:()=>({S,W,H,dpr,x:px,ox,PW,canvasWidth:cv.width,canvasHeight:cv.height}),canvas:cv,page:document,reducedMotion:()=>rm,motion,deathSlowdown:()=>dth,refreshAccessibleControls,keys:()=>[kl,kr,drag],windowEvents,documentEvents,canvasEvents,mediaEvents,accessibleActions,accessibleSettings});`, sandbox);
   return sandbox.probe;
 }
 
@@ -158,6 +163,51 @@ test('storage exceptions do not prevent the game from reaching its menu', () => 
   assert.doesNotThrow(() => game().sv());
 });
 
+test('a blocked localStorage property keeps the game playable without writing or replacing saves', () => {
+  const game = bootGame(null, { storageGetterThrows: true });
+  assert.equal(game().state, 'menu');
+  assert.equal(game().readOnly, true);
+  assert.match(game().reason, /Storage unavailable/);
+  assert.doesNotThrow(() => game().start(0));
+  assert.equal(game().state, 'play');
+  assert.equal(game().sv(), false);
+  assert.doesNotThrow(() => game().advanceSkin());
+});
+
+test('reduced motion removes decorative movement and skips the death slow-motion delay', () => {
+  const storage = { getItem: () => null, setItem() {} };
+  const reduced = bootGame(storage, { reducedMotion: true });
+  assert.equal(reduced().reducedMotion(), true);
+  assert.equal(reduced().motion(16), 0);
+  reduced().start(0);
+  reduced().hit(); reduced().hit(); reduced().hit();
+  assert.equal(reduced().state, 'over');
+  assert.equal(reduced().deathSlowdown(), 0);
+
+  const standard = bootGame(storage);
+  assert.equal(standard().reducedMotion(), false);
+  assert.equal(standard().motion(16), 16);
+  standard().start(0);
+  standard().hit(); standard().hit(); standard().hit();
+  assert.equal(standard().state, 'play');
+  assert.equal(standard().deathSlowdown(), 1.1);
+});
+
+test('reduced motion preference changes take effect while the page remains open', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  game().start(0);
+  game().hit(); game().hit(); game().hit();
+  assert.equal(game().deathSlowdown(), 1.1);
+  game().mediaEvents.get('change')({ matches: true });
+  assert.equal(game().reducedMotion(), true);
+  assert.equal(game().deathSlowdown(), 0);
+  assert.equal(game().state, 'over');
+});
+
+test('canvas has a visible keyboard focus indicator using the established gold focus color', () => {
+  assert.match(source, /canvas:focus-visible\{outline:2px solid #ffd23f/);
+});
+
 test('normal and daily runs start, pause, resume, end, and retry', () => {
   const values = new Map();
   const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
@@ -185,6 +235,38 @@ test('blur clears held keyboard movement and pauses active play', () => {
   assert.deepEqual(plain(game().keys().slice(0, 2)), [0, 0]);
   assert.equal(game().keys()[2], null);
   assert.equal(game().state, 'pause');
+});
+
+test('pointer cancellation and hidden-page transitions release movement and drag state', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  game().start(0);
+  const down = game().canvasEvents.get('pointerdown');
+  down({ preventDefault() {}, pointerId: 1, clientX: 100, clientY: 200 });
+  assert.notEqual(game().keys()[2], null);
+  game().canvasEvents.get('pointercancel')();
+  assert.equal(game().keys()[2], null);
+
+  game().windowEvents.get('keydown')({ key: 'ArrowRight', preventDefault() {} });
+  game().page.hidden = true;
+  game().documentEvents.get('visibilitychange')();
+  assert.deepEqual(plain(game().keys().slice(0, 2)), [0, 0]);
+  assert.equal(game().keys()[2], null);
+  assert.equal(game().state, 'pause');
+});
+
+test('resize recalculates finite canvas geometry and keeps the ship inside the play lane', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  const canvas = game().canvas;
+  canvas.clientWidth = 320;
+  canvas.clientHeight = 480;
+  game().windowEvents.get('resize')();
+  const g = game().geometry();
+  assert.ok(Number.isFinite(g.S) && g.S > 0);
+  assert.ok(Number.isFinite(g.W) && Number.isFinite(g.H));
+  assert.ok(g.dpr <= 2);
+  assert.equal(g.canvasWidth, 320 * g.dpr);
+  assert.equal(g.canvasHeight, 480 * g.dpr);
+  assert.ok(g.x >= g.ox + 14 && g.x <= g.ox + g.PW - 14);
 });
 
 test('accessible DOM controls can start a run, reach settings, and change preferences', () => {
