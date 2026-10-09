@@ -64,4 +64,4 @@
 - M4 自动检查：`node --test tests/save-state.test.cjs` 29/29；包含语法、首帧和多界面、六主题绘制、存档损坏/未来版本恢复、购买写入后重载、双指拖动+技能、延迟后的 Boss 继续/重试、常规与减少动态效果。
 - 视觉变更局限于既有霓虹规范中的说明文字和焦点辅助区：暗底、青色描边、金色焦点、既有字体语义，安全区、可滚动焦点面板、34px 最小控件高度；未更换美术风格、游戏配色、形状、规则或存档格式。
 - 浏览器视觉、真实触屏/读屏器、在线 Pages 页面和实玩难度仍未由 VM 验收；自动测试不会伪装成设备 PASS。
-- 本地 checkout 无 Git remote，发布通过 GitHub API 对 `ericqixuan0806/neon-drift` `main` 读版本、更新和回读核对；提交 SHA 将在发布后补记。
+- 本地 checkout 无 Git remote，发布通过 GitHub API 对 `ericqixuan0806/neon-drift` `main` 读版本、更新和回读核对；源码发布提交 `91eff91da9be392ec5c5ce6a35b23e24d811eb2a`；测试提交 `d6095a1ffdf517f0e1e5ed63e78a93c1a8bf347b`。GitHub API 回读的七项文件 blob 均与本地一致。Pages 部署源已更新，在线视觉仍待人工/浏览器验收。
