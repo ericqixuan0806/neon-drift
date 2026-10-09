@@ -19,6 +19,7 @@ function bootGame(storage, { storageGetterThrows = false, reducedMotion = false 
   const documentEvents = new Map();
   const canvasEvents = new Map();
   const mediaEvents = new Map();
+  const animationFrames = [];
   const register = (events, type, handler) => events.set(type, handler);
   const makeButtons = (kind, names) => names.map(name => {
     const handlers = new Map();
@@ -28,7 +29,17 @@ function bootGame(storage, { storageGetterThrows = false, reducedMotion = false 
   });
   const accessibleActions = makeButtons('action', ['start','daily','pause','retry','menu','ship','shop','levels','missions','stats','settings','difficulty','export']);
   const accessibleSettings = makeButtons('setting', ['0','1','2','3','4','5','6']);
-  const canvasContext = {};
+  const canvasContext = new Proxy({
+    measureText: value => ({ width: String(value).length * 8 }),
+    createLinearGradient: () => ({ addColorStop() {} }),
+    createRadialGradient: () => ({ addColorStop() {} }),
+  }, { get(target, key) { return key in target ? target[key] : () => {}; } });
+  const CanvasRenderingContext2D = function CanvasRenderingContext2D() {};
+  Object.defineProperty(CanvasRenderingContext2D.prototype, 'shadowBlur', {
+    configurable: true,
+    get() { return this._shadowBlur || 0; },
+    set(value) { this._shadowBlur = value; },
+  });
   const elements = {
     c: { clientWidth: 800, clientHeight: 600, getContext: () => canvasContext,
       addEventListener: (type, handler) => register(canvasEvents, type, handler),
@@ -41,19 +52,19 @@ function bootGame(storage, { storageGetterThrows = false, reducedMotion = false 
     addEventListener: (type, handler) => register(documentEvents, type, handler),
     querySelectorAll: selector => selector.includes('[data-action]') ? accessibleActions : accessibleSettings,
     fonts: { load: () => Promise.resolve() },
-    createElement: () => ({ click() {} }),
+    createElement: () => ({ click() {}, getContext: () => canvasContext }),
   };
   const sandbox = {
-    document, devicePixelRatio: 1, windowEvents, documentEvents, canvasEvents, mediaEvents, accessibleActions, accessibleSettings,
+    document, devicePixelRatio: 1, windowEvents, documentEvents, canvasEvents, mediaEvents, animationFrames, accessibleActions, accessibleSettings,
     matchMedia: query => ({ matches: query.includes('prefers-reduced-motion') && reducedMotion,
       addEventListener: (type, handler) => mediaEvents.set(type, handler),
       addListener: handler => mediaEvents.set('change', handler) }),
-    addEventListener: (type, handler) => register(windowEvents, type, handler), requestAnimationFrame() {},
-    CanvasRenderingContext2D: function CanvasRenderingContext2D() {},
+    addEventListener: (type, handler) => register(windowEvents, type, handler), requestAnimationFrame: callback => animationFrames.push(callback),
+    CanvasRenderingContext2D,
     performance: { now: () => 1000 },
   };
   Object.defineProperty(sandbox, 'localStorage', { get() { if (storageGetterThrows) throw new Error('storage denied'); return storage; } });
-  vm.runInNewContext(`${inlineScript}\nglobalThis.probe=()=>({state:st,meta:M,readOnly:saveReadOnly,reason:saveReason,start,pause,end,hit,sv,advanceSkin,ok,skin:()=>skin,skinName:()=>SK[skin][0],skinColor:()=>SK[skin][1],geometry:()=>({S,W,H,dpr,x:px,ox,PW,canvasWidth:cv.width,canvasHeight:cv.height}),canvas:cv,page:document,reducedMotion:()=>rm,motion,deathSlowdown:()=>dth,refreshAccessibleControls,keys:()=>[kl,kr,drag],windowEvents,documentEvents,canvasEvents,mediaEvents,accessibleActions,accessibleSettings});`, sandbox);
+  vm.runInNewContext(`${inlineScript}\nglobalThis.probe=()=>({state:st,meta:M,readOnly:saveReadOnly,reason:saveReason,start,pause,end,hit,sv,advanceSkin,ok,skin:()=>skin,skinName:()=>SK[skin][0],skinColor:()=>SK[skin][1],geometry:()=>({S,W,H,dpr,x:px,ox,PW,canvasWidth:cv.width,canvasHeight:cv.height}),canvas:cv,page:document,reducedMotion:()=>rm,motion,deathSlowdown:()=>dth,drawFrame:(time=16)=>frame(time),scheduledFrames:()=>animationFrames.length,refreshAccessibleControls,keys:()=>[kl,kr,drag],windowEvents,documentEvents,canvasEvents,mediaEvents,accessibleActions,accessibleSettings});`, sandbox);
   return sandbox.probe;
 }
 
@@ -62,6 +73,37 @@ test('inline game script parses without syntax errors', () => {
   assert.equal(scripts.length, 1, 'the standalone game should keep one inline script');
   const result = spawnSync(process.execPath, ['--check'], { input: scripts[0], encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr || result.stdout);
+});
+
+test('the first menu frame completes and schedules the next animation frame', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  assert.equal(game().scheduledFrames(), 1);
+  assert.doesNotThrow(() => game().drawFrame(16));
+  assert.equal(game().scheduledFrames(), 2);
+});
+
+test('accessible menu, settings, records, pause, and game-over screens draw without runtime errors', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  const action = name => game().accessibleActions.find(button => button.dataset.action === name);
+  let time = 16;
+  const render = expected => {
+    game().drawFrame(time += 16);
+    assert.equal(game().state, expected);
+  };
+  for (const name of ['shop','levels','missions','stats','settings']) {
+    action(name).click();
+    render(name === 'levels' ? 'lv' : name === 'missions' ? 'miss' : name === 'stats' ? 'stats' : name === 'settings' ? 'set' : 'shop');
+    action('menu').click();
+    render('menu');
+  }
+  action('start').click();
+  render('play');
+  action('pause').click();
+  render('pause');
+  game().end();
+  render('over');
+  action('retry').click();
+  render('play');
 });
 
 test('missing save uses fresh defaults', () => {
