@@ -23,11 +23,14 @@ function bootGame(storage, { storageGetterThrows = false, reducedMotion = false 
   const register = (events, type, handler) => events.set(type, handler);
   const makeButtons = (kind, names) => names.map(name => {
     const handlers = new Map();
-    return { dataset: { [kind]: name }, disabled: false,
+    return { dataset: { [kind]: name }, disabled: false, textContent: name, attributes: {}, setAttribute(name, value) { this.attributes[name] = value; },
       addEventListener: (type, handler) => handlers.set(type, handler),
       click() { if (!this.disabled) handlers.get('click')?.(); } };
   });
-  const accessibleActions = makeButtons('action', ['start','daily','pause','retry','menu','ship','shop','levels','missions','stats','settings','difficulty','export']);
+  const accessibleActions = makeButtons('action', ['start','daily','pause','retry','menu','ship','shop','levels','missions','stats','settings','difficulty','export','shop-prev','shop-next','level-prev','level-next','continue']);
+  const accessibleUpgrades = makeButtons('buyUpgrade', Array.from({ length: 11 }, (_, i) => String(i)));
+  const accessibleSkillBuys = makeButtons('buySkill', ['0','1','2','3']);
+  const accessibleSkills = makeButtons('skill', ['0','1','2','3']);
   const accessibleSettings = makeButtons('setting', ['0','1','2','3','4','5','6']);
   const canvasContext = new Proxy({
     measureText: value => ({ width: String(value).length * 8 }),
@@ -46,25 +49,26 @@ function bootGame(storage, { storageGetterThrows = false, reducedMotion = false 
       setPointerCapture() {}, getBoundingClientRect: () => ({ left: 0, top: 0 }), focus() {} },
     'game-status': { textContent: '' },
   };
+  const clock = { now: 1000 };
   const document = {
     hidden: false,
     getElementById: id => elements[id],
     addEventListener: (type, handler) => register(documentEvents, type, handler),
-    querySelectorAll: selector => selector.includes('[data-action]') ? accessibleActions : accessibleSettings,
+    querySelectorAll: selector => selector.includes('[data-action]') ? accessibleActions : selector.includes('[data-buy-upgrade]') ? accessibleUpgrades : selector.includes('[data-buy-skill]') ? accessibleSkillBuys : selector.includes('[data-skill]') ? accessibleSkills : accessibleSettings,
     fonts: { load: () => Promise.resolve() },
     createElement: () => ({ click() {}, getContext: () => canvasContext }),
   };
   const sandbox = {
-    document, devicePixelRatio: 1, windowEvents, documentEvents, canvasEvents, mediaEvents, animationFrames, accessibleActions, accessibleSettings,
+    document, devicePixelRatio: 1, windowEvents, documentEvents, canvasEvents, mediaEvents, animationFrames, accessibleActions, accessibleSettings, accessibleUpgrades, accessibleSkillBuys, accessibleSkills, clock, gameStatus: elements['game-status'],
     matchMedia: query => ({ matches: query.includes('prefers-reduced-motion') && reducedMotion,
       addEventListener: (type, handler) => mediaEvents.set(type, handler),
       addListener: handler => mediaEvents.set('change', handler) }),
     addEventListener: (type, handler) => register(windowEvents, type, handler), requestAnimationFrame: callback => animationFrames.push(callback),
     CanvasRenderingContext2D,
-    performance: { now: () => 1000 },
+    performance: { now: () => clock.now },
   };
   Object.defineProperty(sandbox, 'localStorage', { get() { if (storageGetterThrows) throw new Error('storage denied'); return storage; } });
-  vm.runInNewContext(`${inlineScript}\nglobalThis.probe=()=>({state:st,meta:M,readOnly:saveReadOnly,reason:saveReason,start,pause,end,hit,sv,advanceSkin,ok,skin:()=>skin,skinName:()=>SK[skin][0],skinColor:()=>SK[skin][1],geometry:()=>({S,W,H,dpr,x:px,ox,PW,canvasWidth:cv.width,canvasHeight:cv.height}),canvas:cv,page:document,reducedMotion:()=>rm,motion,deathSlowdown:()=>dth,drawFrame:(time=16)=>frame(time),scheduledFrames:()=>animationFrames.length,refreshAccessibleControls,keys:()=>[kl,kr,drag],windowEvents,documentEvents,canvasEvents,mediaEvents,accessibleActions,accessibleSettings});`, sandbox);
+  vm.runInNewContext(`${inlineScript}\nglobalThis.probe=()=>({state:st,meta:M,readOnly:saveReadOnly,reason:saveReason,start,pause,end,hit,sv,advanceSkin,ok,skin:()=>skin,skinName:()=>SK[skin][0],skinColor:()=>SK[skin][1],geometry:()=>({S,W,H,dpr,x:px,ox,PW,canvasWidth:cv.width,canvasHeight:cv.height}),skillPosition:i=>({x:sx(i),y:H-32}),setTheme:index=>{th=index},canvas:cv,page:document,statusText:()=>gameStatus.textContent,reducedMotion:()=>rm,motion,deathSlowdown:()=>dth,drawFrame:(time=16)=>frame(time),scheduledFrames:()=>animationFrames.length,refreshAccessibleControls,keys:()=>[kl,kr,drag],shopPage:()=>pg,levelPage:()=>lp,cooldowns:()=>cd,winReady:()=>winContinueReady,elapsed:()=>performance.now()-ot2,prepareWin:()=>{st='win';bc++;ot2=performance.now();refreshAccessibleControls()},setNow:value=>{clock.now=value},windowEvents,documentEvents,canvasEvents,mediaEvents,accessibleActions,accessibleSettings,accessibleUpgrades,accessibleSkillBuys,accessibleSkills});`, sandbox);
   return sandbox.probe;
 }
 
@@ -100,8 +104,12 @@ test('accessible menu, settings, records, pause, and game-over screens draw with
   render('play');
   action('pause').click();
   render('pause');
+  action('pause').click();
+  render('play');
   game().end();
   render('over');
+  game().setNow(1701);
+  game().drawFrame(time += 16);
   action('retry').click();
   render('play');
 });
@@ -285,7 +293,7 @@ test('pointer cancellation and hidden-page transitions release movement and drag
   const down = game().canvasEvents.get('pointerdown');
   down({ preventDefault() {}, pointerId: 1, clientX: 100, clientY: 200 });
   assert.notEqual(game().keys()[2], null);
-  game().canvasEvents.get('pointercancel')();
+  game().canvasEvents.get('pointercancel')({ pointerId: 1 });
   assert.equal(game().keys()[2], null);
 
   game().windowEvents.get('keydown')({ key: 'ArrowRight', preventDefault() {} });
@@ -294,6 +302,44 @@ test('pointer cancellation and hidden-page transitions release movement and drag
   assert.deepEqual(plain(game().keys().slice(0, 2)), [0, 0]);
   assert.equal(game().keys()[2], null);
   assert.equal(game().state, 'pause');
+});
+
+test('touch drag is owned by one pointer and unrelated pointer endings cannot release it', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  game().start(0);
+  const down = game().canvasEvents.get('pointerdown');
+  game().meta.k[0] = 1;
+  const event = (pointerId, clientX, clientY = 200) => ({ preventDefault() {}, pointerId, pointerType: 'touch', clientX, clientY });
+  down(event(11, 100));
+  const owner = game().keys()[2];
+  assert.equal(owner.id, 11);
+  const { S } = game().geometry(), skill = game().skillPosition(0);
+  down(event(22, S * skill.x, S * skill.y));
+  assert.ok(game().cooldowns()[0] > 0, 'a second finger can activate a skill while steering');
+  assert.equal(game().keys()[2].id, 11, 'a second finger cannot steal the active drag');
+  game().canvasEvents.get('pointermove')(event(22, 210));
+  assert.equal(game().keys()[2].id, 11);
+  game().canvasEvents.get('pointerup')({ pointerId: 22 });
+  game().canvasEvents.get('pointercancel')({ pointerId: 22 });
+  game().canvasEvents.get('lostpointercapture')({ pointerId: 22 });
+  assert.equal(game().keys()[2].id, 11, 'ending a non-owner pointer leaves steering active');
+  game().canvasEvents.get('pointercancel')({ pointerId: 11 });
+  assert.equal(game().keys()[2], null, 'the owner cancel releases its drag');
+});
+
+test('native DOM button keys do not also trigger game shortcuts and repeated toggles are ignored', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  const startButton = game().accessibleActions.find(button => button.dataset.action === 'start');
+  const keydown = game().windowEvents.get('keydown');
+  keydown({ key: 'Enter', target: { tagName: 'BUTTON' }, preventDefault() {} });
+  keydown({ key: ' ', target: { tagName: 'BUTTON' }, preventDefault() {} });
+  assert.equal(game().state, 'menu', 'button activation keys must not reach the global game listener');
+  startButton.click();
+  assert.equal(game().state, 'play');
+  keydown({ key: 'p', target: game().canvas, preventDefault() {}, repeat: false });
+  assert.equal(game().state, 'pause');
+  keydown({ key: 'p', target: game().canvas, preventDefault() {}, repeat: true });
+  assert.equal(game().state, 'pause', 'holding a state-toggle key cannot immediately undo the first press');
 });
 
 test('resize recalculates finite canvas geometry and keeps the ship inside the play lane', () => {
@@ -328,8 +374,131 @@ test('accessible DOM controls can start a run, reach settings, and change prefer
   assert.equal(setting('5').disabled, false);
   setting('5').click();
   assert.equal(game().meta.s.cb, 1);
+  assert.equal(setting('5').attributes['aria-pressed'], 'true');
+  assert.match(setting('5').textContent, /Colorblind colors on/);
+  assert.match(game().statusText(), /Colorblind colors on/);
   action('menu').click();
   assert.equal(game().state, 'menu');
+});
+
+test('accessible controls complete shop purchases, skill activation, and level navigation', () => {
+  const values = new Map();
+  const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  const game = bootGame(storage);
+  const action = name => game().accessibleActions.find(button => button.dataset.action === name);
+  game().meta.c = 5000;
+  game().sv();
+  action('shop').click();
+  game().drawFrame(16);
+  assert.equal(game().state, 'shop');
+  for (let i = 0; i < 3; i++) action('shop-next').click();
+  assert.equal(game().shopPage(), 3);
+  const pulse = game().accessibleSkillBuys[0];
+  assert.equal(pulse.disabled, false);
+  pulse.click();
+  assert.equal(game().meta.k[0], 1);
+  assert.equal(game().meta.c, 2750);
+  assert.equal(pulse.disabled, true, 'an owned skill cannot be purchased twice');
+  const saved = JSON.parse(values.get('neon-drift-meta'));
+  assert.equal(saved.version, 1);
+  assert.equal(saved.data.k[0], 1);
+  const reloaded = bootGame(storage);
+  assert.equal(reloaded().meta.k[0], 1);
+  assert.equal(reloaded().meta.c, 2750);
+
+  action('shop-prev').click(); action('shop-prev').click(); action('shop-prev').click();
+  assert.equal(game().shopPage(), 0);
+  const magnet = game().accessibleUpgrades[0];
+  assert.equal(magnet.disabled, false);
+  magnet.click();
+  assert.equal(game().meta.u[0], 1);
+  assert.equal(game().meta.c, 2630);
+  game().meta.c = 0;
+  game().refreshAccessibleControls();
+  assert.equal(magnet.disabled, true, 'insufficient credits disable the purchase');
+  magnet.click();
+  assert.equal(game().meta.u[0], 1);
+  assert.equal(game().meta.c, 0);
+
+  action('menu').click();
+  game().drawFrame(32);
+  action('start').click();
+  game().drawFrame(48);
+  assert.equal(game().state, 'play');
+  const usePulse = game().accessibleSkills[0];
+  assert.equal(usePulse.disabled, false);
+  usePulse.click();
+  assert.ok(game().cooldowns()[0] > 0);
+  assert.equal(usePulse.disabled, true, 'a skill enters cooldown after one activation');
+
+  action('menu').click();
+  game().drawFrame(64);
+  action('levels').click();
+  game().drawFrame(80);
+  assert.equal(game().state, 'lv');
+  action('level-next').click();
+  assert.equal(game().levelPage(), 1);
+  action('level-prev').click();
+  assert.equal(game().levelPage(), 0);
+});
+
+test('boss continue is state guarded and becomes available after its presentation delay', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  const action = name => game().accessibleActions.find(button => button.dataset.action === name);
+  game().prepareWin();
+  assert.equal(action('continue').disabled, true);
+  game().setNow(1701);
+  game().drawFrame(1717);
+  assert.equal(action('continue').disabled, false, `ready=${game().winReady()} elapsed=${game().elapsed()}`);
+  assert.match(game().statusText(), /Boss 1 down.*300 score and 40 credits/);
+  action('continue').click();
+  assert.equal(game().state, 'play');
+  assert.equal(action('continue').disabled, true);
+});
+
+test('first-run guidance matches live controls and results announce an accurate one-time summary', () => {
+  assert.match(source, /Collect cyan orbs and dodge pink hazards/);
+  assert.match(source, /1–4 skills · P or Esc pauses/);
+  assert.match(source, /Skills: 1–4 in play/);
+  assert.match(source, /Cyan = collect · Pink = dodge/);
+  assert.match(source, /\.accessible-controls button\{min-height:34px/);
+  assert.match(source, /border-radius:10px;text-align:left/);
+  assert.match(source, /safe-area-inset-left/);
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  game().start(0);
+  game().end();
+  const runs = game().meta.g;
+  const coins = game().meta.c;
+  game().end();
+  assert.equal(game().meta.g, runs, 'ending an already completed run cannot count it twice');
+  assert.equal(game().meta.c, coins);
+  game().drawFrame(16);
+  assert.match(game().statusText(), /Run complete\. Score 0\..*Earned 0 credits\. Time 0:00\. Level 1/);
+});
+
+test('all six visual themes render and the standard death slow-motion path ends once and retries', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  let time = 16;
+  for (let theme = 0; theme < 6; theme++) {
+    game().start(0);
+    game().setTheme(theme);
+    assert.doesNotThrow(() => game().drawFrame(time += 16), `theme ${theme} first frame`);
+    assert.doesNotThrow(() => game().drawFrame(time += 16), `theme ${theme} second frame`);
+    assert.equal(game().state, 'play');
+  }
+  game().start(0);
+  game().hit(); game().hit(); game().hit();
+  assert.equal(game().deathSlowdown(), 1.1);
+  for (let i = 0; i < 30 && game().state === 'play'; i++) game().drawFrame(time += 50);
+  assert.equal(game().state, 'over');
+  assert.equal(game().meta.g, 1);
+  const retry = game().accessibleActions.find(button => button.dataset.action === 'retry');
+  assert.equal(retry.disabled, true);
+  game().setNow(1701);
+  game().drawFrame(time += 16);
+  assert.equal(retry.disabled, false);
+  retry.click();
+  assert.equal(game().state, 'play');
 });
 
 test('ship color button cycles the five core style-guide colorways without score gates', () => {
@@ -344,6 +513,7 @@ test('ship color button cycles the five core style-guide colorways without score
     shipButtonClick({ preventDefault() {}, pointerId: 1, clientX: S * W / 2, clientY: S * (H / 2 + 86) });
     assert.equal(game().skinName(), name);
     assert.equal(game().skinColor(), color);
+    assert.match(game().accessibleActions.find(button => button.dataset.action === 'ship').textContent, new RegExp(name));
   }
   assert.equal(values.get('neon-drift-skin'), '0');
 
