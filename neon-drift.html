@@ -201,7 +201,7 @@ ctx.fillStyle='rgba(7,7,15,.75)';ctx.beginPath();ctx.moveTo(0,-9);ctx.lineTo(3,2
 // Canvas scene and menu rendering use the visual style guide's existing palette and scale.
 function draw(){
 ctx.setTransform(dpr*S,0,0,dpr*S,0,0);
-bgd();
+bgd();const n=motion(last/1000);
 const shake=motion(shk),sx=shake>0?(Math.random()-.5)*shake*30:0,sy=shake>0?(Math.random()-.5)*shake*30:0;ctx.save();ctx.translate(sx,sy);ctx.fillStyle=M.s.hc?'rgba(0,0,0,.8)':'rgba(2,4,14,.42)';ctx.fillRect(ox,-2,PW,H+4);
 const lh=TH[th][2];ctx.strokeStyle='hsla('+lh+',100%,60%,.12)';ctx.lineWidth=1;ctx.beginPath();
 for(let y=gy-40;y<H;y+=40){ctx.moveTo(ox,y);ctx.lineTo(ox+PW,y)}
