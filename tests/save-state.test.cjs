@@ -5,7 +5,8 @@ const vm = require('node:vm');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'neon-drift.html'), 'utf8');
+const sourceName = process.env.NEON_DRIFT_SOURCE || 'neon-drift.html';
+const source = fs.readFileSync(path.join(__dirname, '..', sourceName), 'utf8');
 const core = source.split('/* save-state-core:start */')[1]?.split('/* save-state-core:end */')[0];
 assert.ok(core, 'save-state-core markers must remain in the game source');
 const sandbox = {};
@@ -17,6 +18,8 @@ const hardcoreRewardComponents = (date, miniCredits = 0, bossCredits = 0) => Arr
   missionComplete: [0, 0, 0], achievements: []
 } }));
 const inlineScript = [...source.matchAll(/<script>([\s\S]*?)<\/script>/g)][0]?.[1];
+
+function advanceIntermission(game) { const remaining = game().campaignTransition().remaining; if (remaining > 0) game().advanceIntermission(remaining); }
 
 function bootGame(storage, { storageGetterThrows = false, reducedMotion = false, width = 800, height = 600 } = {}) {
   const windowEvents = new Map();
@@ -36,6 +39,8 @@ function bootGame(storage, { storageGetterThrows = false, reducedMotion = false,
   const accessibleUpgrades = makeButtons('buyUpgrade', Array.from({ length: 11 }, (_, i) => String(i)));
   const accessibleSkillBuys = makeButtons('buySkill', ['0','1','2','3']);
   const accessibleSkills = makeButtons('skill', ['0','1','2','3']);
+  const accessibleClasses = makeButtons('class', ['0','1','2','3']);
+  const accessibleModules = makeButtons('module', ['0','1','2','3','4','5']);
   let rngCalls = 0;
   const accessibleSettings = makeButtons('setting', ['0','1','2','3','4','5','6']);
   const canvasContext = new Proxy({
@@ -60,7 +65,7 @@ function bootGame(storage, { storageGetterThrows = false, reducedMotion = false,
     hidden: false,
     getElementById: id => elements[id],
     addEventListener: (type, handler) => register(documentEvents, type, handler),
-    querySelectorAll: selector => selector.includes('[data-action]') ? accessibleActions : selector.includes('[data-buy-upgrade]') ? accessibleUpgrades : selector.includes('[data-buy-skill]') ? accessibleSkillBuys : selector.includes('[data-skill]') ? accessibleSkills : accessibleSettings,
+    querySelectorAll: selector => selector.includes('[data-action]') ? accessibleActions : selector.includes('[data-buy-upgrade]') ? accessibleUpgrades : selector.includes('[data-buy-skill]') ? accessibleSkillBuys : selector.includes('[data-skill]') ? accessibleSkills : selector.includes('[data-class]') ? accessibleClasses : selector.includes('[data-module]') ? accessibleModules : accessibleSettings,
     fonts: { load: () => Promise.resolve() },
     createElement: () => ({ click() {}, getContext: () => canvasContext }),
   };
@@ -72,9 +77,10 @@ function bootGame(storage, { storageGetterThrows = false, reducedMotion = false,
     addEventListener: (type, handler) => register(windowEvents, type, handler), requestAnimationFrame: callback => animationFrames.push(callback),
     CanvasRenderingContext2D,
     performance: { now: () => clock.now },
+    setTimeout: () => 0,
   };
   Object.defineProperty(sandbox, 'localStorage', { get() { if (storageGetterThrows) throw new Error('storage denied'); return storage; } });
-  vm.runInNewContext(`${inlineScript}\nglobalThis.probe=()=>({state:st,meta:M,readOnly:saveReadOnly,reason:saveReason,recoveryRaw:()=>saveRecoveryRaw,start,startCampaign,campaignCommitMiniNode,campaignCommitBossNode,acknowledgeCampaignSettlement,retryCampaignSave,pause,end,hit,sv,advanceSkin,ok,skin:()=>skin,skinName:()=>SK[skin][0],skinColor:()=>SK[skin][1],geometry:()=>({S,W,H,dpr,x:px,ox,PW,canvasWidth:cv.width,canvasHeight:cv.height,py,hh,hw}),skillPosition:i=>({x:sx(i),y:H-32}),setTheme:index=>{t=index*25;lvp=index;th=index;st='play'},themeIndex:()=>th,setGalleryLevel:index=>{th=index;lp=index;st='lv'},levelData:()=>({themes:TH,lore:LORE,obstacles:OB,bosses:BN,hints:LEVEL_HINTS}),isLevelUnlocked:levelUnlocked,drawHazard:index=>{th=index;hzArt({x:100,y:80,w:38,h:30,v:150,theme:index})},drawOrbMark:index=>orbMark(100,80,index),canvasCalls:()=>canvasCalls,clearCanvasCalls:()=>canvasCalls.length=0,prepareSpawnTheme:index=>{t=index*25;lvp=index;th=index;st='play';wv=0;bo=null},setDifficulty:index=>{gm=index},setMissionRotation:index=>{mh=index},runKind:()=>runKind,campaignNode:()=>campaignNode,campaignWorld:()=>campaignWorld,campaignRun:()=>campaignRun,campaignConfiguration:()=>JSON.parse(JSON.stringify(CAMPAIGN_WORLDS)),campaignStageProfile:()=>campaignNodeConfig(campaignWorld,campaignNode),campaignProfile:(world,node)=>campaignNodeConfig(world,node),campaignStageDuration:campaignStageSeconds,validateCampaignWorlds,setCampaignDuration:(world,node,seconds)=>{const stage=CAMPAIGN_WORLDS[world].stages[node];stage.durationSeconds=seconds;if(stage.warningAt)stage.warningAt=Math.min(15,seconds-5)},prepareCampaignProfile:(world,node)=>{runKind='campaign';campaignWorld=world;campaignNode=node;st='play';th=world;objs=[];spd=180},campaignWallCenter, campaignRewards:()=>plainCampaignAttempt(),missionPlan:()=>[0,1,2].map(i=>MP[(mh+i*2)%6]),mp,waveState:()=>({active:wv,elapsed:wt,next:nw}),bossActive:()=>!!bo,bossSummary:()=>({big:bo?.big,label:bn,hp:bo?.hp}),forceCampaignBoss:()=>{bo={x:100};bossDown()},campaignOrbAtShip:()=>{tm=100;objs=[{k:'o',x:px,y:py,r:10,v:0}]},forceFatal:()=>{li=0;dth=1;end()},setRandom:value=>{rngCalls=0;rnd=()=>{rngCalls++;return value}},randomCalls:()=>rngCalls,spawnForLevel,objects:()=>objs,levelDuration:()=>LEVEL_SECONDS,campaignDuration,gameSpeed:()=>spd,stageIndex:currentLevelIndex,stageProgress:()=>({lvp,campaignClear}),stageRecords:()=>M.lv,prepareStage:(seconds,previous)=>{runKind='legacy';st='play';t=seconds;lvp=previous;th=currentLevelIndex();sc=180;rc=17;rk=2;rb=1;s0=80;tm=100;campaignClear=false},advanceGame:upd,canvas:cv,page:document,statusText:()=>gameStatus.textContent,reducedMotion:()=>rm,motion,deathSlowdown:()=>dth,drawFrame:(time=16)=>frame(time),scheduledFrames:()=>animationFrames.length,refreshAccessibleControls,keys:()=>[kl,kr,drag],steeringTarget:()=>tx,shopPage:()=>pg,levelPage:()=>lp,cooldowns:()=>cd,winReady:()=>winContinueReady,elapsed:()=>performance.now()-ot2,prepareWin:()=>{st='win';bc++;ot2=performance.now();refreshAccessibleControls()},continueAfterBoss,setNow:value=>{clock.now=value},windowEvents,documentEvents,canvasEvents,mediaEvents,accessibleActions,accessibleSettings,accessibleUpgrades,accessibleSkillBuys,accessibleSkills});function plainCampaignAttempt(){return campaignAttempt?JSON.parse(JSON.stringify(campaignAttempt)):null}`, sandbox);
+  vm.runInNewContext(`${inlineScript}\nglobalThis.probe=()=>({state:st,meta:M,readOnly:saveReadOnly,reason:saveReason,recoveryRaw:()=>saveRecoveryRaw,start,startCampaign,campaignCommitMiniNode,campaignCommitBossNode,acknowledgeCampaignSettlement,retryCampaignSave,pause,end,hit,sv,advanceSkin,ok,skin:()=>skin,skinName:()=>SK[skin][0],skinColor:()=>SK[skin][1],geometry:()=>({S,W,H,dpr,x:px,ox,PW,canvasWidth:cv.width,canvasHeight:cv.height,py,hh,hw}),skillPosition:i=>({x:sx(i),y:H-32}),setTheme:index=>{t=index*25;lvp=index;th=index;st='play'},themeIndex:()=>th,setGalleryLevel:index=>{th=index;lp=index;st='lv'},levelData:()=>({themes:TH,lore:LORE,obstacles:OB,bosses:BN,hints:LEVEL_HINTS}),isLevelUnlocked:levelUnlocked,drawHazard:index=>{th=index;hzArt({x:100,y:80,w:38,h:30,v:150,theme:index})},drawOrbMark:index=>orbMark(100,80,index),canvasCalls:()=>canvasCalls,clearCanvasCalls:()=>canvasCalls.length=0,prepareSpawnTheme:index=>{t=index*25;lvp=index;th=index;st='play';wv=0;bo=null},setDifficulty:index=>{gm=index},setMissionRotation:index=>{mh=index},runKind:()=>runKind,campaignNode:()=>campaignNode,campaignWorld:()=>campaignWorld,setShipX:value=>{px=tx=value},animationTime:()=>last,campaignTransition:()=>({remaining:campaignTransitionRemaining,duration:campaignTransitionDuration,boss:campaignTransitionBoss,completed:campaignTransitionCompleted,paused:campaignIntermissionPaused,simTime:t,score:sc,spawnTimer:tm,objects:objs.length,shipX:px,bannerTimer:bt,toastTimer:tt}),advanceIntermission:seconds=>{const target=Math.max(0,campaignTransitionRemaining-seconds);let now=last;while(st=='campaignIntermission'&&campaignTransitionRemaining>target){now+=Math.min(50,Math.max(1,(campaignTransitionRemaining-target)*1000));frame(now)}},campaignRun:()=>campaignRun,campaignConfiguration:()=>JSON.parse(JSON.stringify(CAMPAIGN_WORLDS)),campaignStageProfile:()=>campaignNodeConfig(campaignWorld,campaignNode),campaignProfile:(world,node)=>campaignNodeConfig(world,node),campaignStageDuration:campaignStageSeconds,validateCampaignWorlds,setCampaignDuration:(world,node,seconds)=>{const stage=CAMPAIGN_WORLDS[world].stages[node];stage.durationSeconds=seconds;if(stage.warningAt)stage.warningAt=Math.min(15,seconds-5)},prepareCampaignProfile:(world,node)=>{runKind='campaign';campaignWorld=world;campaignNode=node;st='play';th=world;objs=[];spd=180},campaignWallCenter, campaignRewards:()=>plainCampaignAttempt(),missionPlan:()=>[0,1,2].map(i=>MP[(mh+i*2)%6]),mp,waveState:()=>({active:wv,elapsed:wt,next:nw}),bossActive:()=>!!bo,bossSummary:()=>({big:bo?.big,label:bn,hp:bo?.hp}),forceCampaignBoss:()=>{bo={x:100};bossDown()},campaignOrbAtShip:()=>{tm=100;objs=[{k:'o',x:px,y:py,r:10,v:0}]},forceFatal:()=>{li=0;dth=1;end()},setRandom:value=>{rngCalls=0;rnd=()=>{rngCalls++;return value}},randomCalls:()=>rngCalls,spawnForLevel,objects:()=>objs,levelDuration:()=>LEVEL_SECONDS,campaignDuration,gameSpeed:()=>spd,stageIndex:currentLevelIndex,stageProgress:()=>({lvp,campaignClear}),stageRecords:()=>M.lv,prepareStage:(seconds,previous)=>{runKind='legacy';st='play';t=seconds;lvp=previous;th=currentLevelIndex();sc=180;rc=17;rk=2;rb=1;s0=80;tm=100;campaignClear=false},advanceGame:upd,canvas:cv,page:document,statusText:()=>gameStatus.textContent,reducedMotion:()=>rm,motion,deathSlowdown:()=>dth,drawFrame:(time=16)=>frame(Math.max(last+16,time)),scheduledFrames:()=>animationFrames.length,refreshAccessibleControls,keys:()=>[kl,kr,drag],steeringTarget:()=>tx,shopPage:()=>pg,levelPage:()=>lp,cooldowns:()=>cd,winReady:()=>winContinueReady,elapsed:()=>performance.now()-ot2,prepareWin:()=>{st='win';bc++;ot2=performance.now();refreshAccessibleControls()},continueAfterBoss,setNow:value=>{clock.now=value},windowEvents,documentEvents,canvasEvents,mediaEvents,accessibleActions,accessibleSettings,accessibleUpgrades,accessibleSkillBuys,accessibleSkills});function plainCampaignAttempt(){return campaignAttempt?JSON.parse(JSON.stringify(campaignAttempt)):null}`, sandbox);
   return sandbox.probe;
 }
 
@@ -91,10 +97,10 @@ test('campaign map shows all twelve worlds and announces saved stage and Boss pr
   map.click();
   assert.equal(game().state, 'campaignMap');
   game().drawFrame(16);
-  assert.match(game().statusText(), /Campaign map\. 0 of 12 worlds cleared/);
+  assert.match(game().statusText(), /Campaign map\. Selected world 1\. 0 of 12 worlds cleared/);
   const labels = game().canvasCalls().filter(call => call.name === 'fillText').map(call => String(call.args[0]));
   for (const world of game().campaignConfiguration()) assert.equal(labels.some(label => label.includes(world.name)), true, world.name);
-  assert.equal(labels.includes('LOCKED'), true);
+  assert.equal(labels.includes('AFTER W02'), true, 'a later world names the Boss gate that unlocks it');
   assert.equal(labels.includes('OPEN'), true, 'World 1 remains visible as the starting world');
   game().accessibleActions.find(button => button.dataset.action === 'menu').click();
   assert.equal(game().state, 'menu');
@@ -139,12 +145,12 @@ test('campaign map distinguishes completed, assisted, current, and locked world 
     resources: { lives: 3, shield: 0, cooldowns: [0, 0, 0, 0], score: 300, credits: 0 } };
   game().accessibleActions.find(button => button.dataset.action === 'campaign-map').click();
   game().drawFrame(16);
-  assert.match(game().statusText(), /1 of 12 worlds cleared/);
+  assert.match(game().statusText(), /Campaign map\. Selected world 2\. 1 of 12 worlds cleared/);
   assert.match(game().statusText(), /World 2, mini 3 of 5/);
   const labels = game().canvasCalls().filter(call => call.name === 'fillText').map(call => String(call.args[0]));
   assert.equal(labels.includes('ASSISTED'), true);
   assert.equal(labels.includes('IN PROGRESS'), true);
-  assert.equal(labels.includes('LOCKED'), true);
+  assert.equal(labels.includes('AFTER W02'), true, 'unopened worlds show their preceding Boss gate');
 });
 
 test('campaign configuration validates twelve themed worlds, five distinct stage roles, and Boss profiles', () => {
@@ -339,7 +345,7 @@ test('missing save uses fresh defaults', () => {
   const result = plain(api.decodeMeta(null));
   assert.equal(result.migrated, false);
   assert.equal(result.reason, '');
-  assert.deepEqual(result.meta.u, Array(11).fill(0));
+  assert.deepEqual(result.meta.u, Array(12).fill(0));
   assert.deepEqual(result.meta.k, [0, 0, 0, 0]);
 });
 
@@ -369,28 +375,29 @@ test('v1 migration preserves all twelve legacy records and creates an isolated e
   const levels = Array.from({ length: 12 }, (_, i) => ({ cl: i % 2, sc: 400 + i, c: i, k: i + 1, b: i % 3, g: 90 + i }));
   const raw = JSON.stringify({ version: 1, data: { c: 81, g: 9, bl: 12, lv: levels } });
   const migrated = plain(api.decodeMeta(raw));
-  assert.equal(api.META_VERSION, 2);
+  assert.equal(api.META_VERSION, 3);
   assert.equal(migrated.migrated, true);
   assert.equal(migrated.sourceRaw, raw);
   assert.deepEqual(migrated.meta.lv, levels);
   assert.deepEqual(migrated.meta.campaign, plain(api.emptyCampaign()));
+  assert.equal(migrated.meta.campaign.worlds.every(world => Object.keys(world).join(',') === 'mini,boss,best,assisted,stars' && world.stars === 0), true, 'migration retains the canonical campaign star field');
   const values = new Map([[api.META_KEY, raw]]);
   const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
   assert.equal(api.writeMeta(storage, migrated.meta, raw), true);
   assert.equal(values.get(api.META_BACKUP_KEY), raw);
   const saved = JSON.parse(values.get(api.META_KEY));
-  assert.equal(saved.version, 2);
+  assert.equal(saved.version, api.META_VERSION);
   assert.deepEqual(plain(api.decodeMeta(values.get(api.META_KEY))).meta.lv, levels);
 });
 
 test('campaign schema round-trips a single normal checkpoint and a committed settlement receipt', () => {
   const data = plain(api.emptyMeta());
-  data.campaign.worlds[0] = { mini: 31, boss: 1, best: 4200, assisted: 0 };
+  data.campaign.worlds[0] = { mini: 31, boss: 1, best: 4200, assisted: 0, stars: 0 };
   data.campaign.checkpoint = { world: 1, node: 0, difficulty: 0, seed: 12345,
     resources: { lives: 3, shield: 1, cooldowns: [0, 2, 0, 4], score: 4200, credits: 37 } };
   data.campaign.claims = ['w0:boss:clear'];
   data.campaign.pendingSettlement = { id: 'world:0:boss', world: 0, score: 4200, credits: 37, final: 0, assisted: 0 };
-  const decoded = plain(api.decodeMeta(JSON.stringify({ version: 2, data })));
+  const decoded = plain(api.decodeMeta(JSON.stringify({ version: api.META_VERSION, data })));
   assert.equal(decoded.reason, '');
   assert.deepEqual(decoded.meta.campaign, data.campaign);
 });
@@ -652,10 +659,11 @@ test('Hardcore campaign mission progress and completion rewards accumulate once 
   assert.equal(game().campaignRewards().credits, mission[3]);
   assert.equal(game().campaignRewards().missionComplete[slot], 1);
   game().campaignCommitMiniNode();
+  advanceIntermission(game);
   game().mp(mission[2], 1);
   assert.equal(game().campaignRewards().credits, 0, 'a completed transient mission must not pay again on the next node');
   assert.equal(game().campaignRewards().missionProgress[slot], 0);
-  for (let node = 1; node < 5; node++) game().campaignCommitMiniNode();
+  for (let node = 1; node < 5; node++) { game().campaignCommitMiniNode(); advanceIntermission(game); }
   game().advanceGame(0.016);
   game().forceCampaignBoss();
   game().advanceGame(0);
@@ -670,7 +678,7 @@ test('Campaign Big Boss defeats advance and complete the active Boss mission', (
   const slot = game().missionPlan().findIndex(mission => mission[2] === 'b');
   assert.notEqual(slot, -1);
   game().startCampaign();
-  for (let node = 0; node < 5; node++) game().advanceGame(20);
+  for (let node = 0; node < 5; node++) { game().advanceGame(20); advanceIntermission(game); }
   game().advanceGame(0.016);
   game().forceCampaignBoss();
   game().advanceGame(0);
@@ -692,9 +700,10 @@ test('World 1 campaign advances through five timed mini stages into its separate
     game().advanceGame(19.99);
     assert.equal(game().campaignNode(), node, 'a node must not clear before its 20-second boundary');
     game().advanceGame(0.01);
-    assert.equal(game().state, 'play');
+    assert.equal(game().state, 'campaignIntermission');
     assert.equal(game().campaignNode(), node + 1);
     if (node < 4) assert.equal(game().meta.campaign.checkpoint.node, node + 1);
+    advanceIntermission(game);
   }
   assert.equal(game().meta.campaign.worlds[0].mini, 31);
   assert.equal(game().meta.campaign.checkpoint.node, 5);
@@ -702,6 +711,106 @@ test('World 1 campaign advances through five timed mini stages into its separate
   assert.equal(game().bossActive(), true);
   assert.equal(game().bossSummary().big, 1);
   assert.match(game().bossSummary().label, /BIG BOSS/);
+});
+
+test('campaign mini intermissions freeze play, retain ship position, pause safely, then grant a protected start', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  game().startCampaign();
+  assert.equal(game().campaignTransition().bannerTimer, 2.5, 'the normal initial campaign entry keeps its banner');
+  game().setShipX(300);
+  game().advanceGame(20);
+  assert.equal(game().state, 'campaignIntermission');
+  const enteredTransition = plain(game().campaignTransition());
+  assert.ok(enteredTransition.score >= 100, 'the completed mini keeps its committed score');
+  assert.deepEqual({ ...enteredTransition, score: 100 }, { remaining: 1.8, duration: 1.8, boss: false, completed: 0, paused: false, simTime: 0, score: 100, spawnTimer: 1.1, objects: 0, shipX: 300, bannerTimer: 0, toastTimer: 4 });
+  const transitionAnnouncement = game().statusText();
+  assert.match(transitionAnnouncement, /Mini 1 of 5 complete.*Next: mini 2 of 5/);
+  assert.match(transitionAnnouncement, /Gameplay starts in 2 seconds/, 'the accessible countdown uses whole seconds');
+  assert.equal(game().accessibleActions.find(button => button.dataset.action === 'pause').disabled, false);
+  game().clearCanvasCalls();
+  game().drawFrame(5000);
+  assert.equal(game().statusText(), transitionAnnouncement, 'stationary frames do not repeat the transition announcement');
+  assert.equal(game().canvasCalls().some(call => call.name === 'fillText' && call.args[0] === 'STARTING IN 2s'), true, 'the 1.8-second card uses a whole-second countdown');
+  game().advanceIntermission(1.2);
+  assert.match(game().statusText(), /Gameplay starts in READY/, 'the accessible cue announces the protected READY interval');
+  game().clearCanvasCalls();
+  game().drawFrame(10000);
+  assert.equal(game().canvasCalls().some(call => call.name === 'fillText' && call.args[0] === 'READY · GAMEPLAY STARTS NOW'), true, 'the protected final interval shows a READY cue');
+  const beforePause = game().campaignTransition();
+  game().pause();
+  assert.equal(game().state, 'pause');
+  game().drawFrame(10000);
+  assert.deepEqual(plain(game().campaignTransition()), { ...plain(beforePause), paused: true }, 'paused intermission timers and simulation state stay frozen');
+  game().pause();
+  assert.equal(game().state, 'campaignIntermission');
+  game().page.hidden = true;
+  game().documentEvents.get('visibilitychange')();
+  assert.equal(game().state, 'pause');
+  const hiddenRemaining = game().campaignTransition().remaining;
+  game().drawFrame(20000);
+  assert.equal(game().campaignTransition().remaining, hiddenRemaining, 'hidden tab cannot consume the transition');
+  game().page.hidden = false;
+  game().pause();
+  game().advanceIntermission(hiddenRemaining);
+  assert.equal(game().state, 'play');
+  assert.match(game().statusText(), /Gameplay starts now/);
+  assert.equal(game().campaignTransition().shipX, 300);
+  assert.equal(game().campaignTransition().spawnTimer, 1.1);
+  assert.equal(game().campaignTransition().bannerTimer, 0, 'the dedicated card prevents the inherited gameplay banner from resurfacing');
+  assert.ok(game().campaignTransition().score >= 100, 'restored stage resources retain committed score');
+  game().advanceGame(0.69);
+  assert.equal(game().campaignTransition().objects, 0, 'no hazard can spawn during the protected start');
+  assert.ok(game().campaignTransition().spawnTimer > 0);
+});
+
+test('canvas resume click preserves a paused campaign intermission and its remaining time', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  game().startCampaign();
+  game().advanceGame(20);
+  assert.equal(game().state, 'campaignIntermission');
+  game().pause();
+  const remaining = game().campaignTransition().remaining;
+  const { S, W, H } = game().geometry();
+  game().canvasEvents.get('pointerdown')({ preventDefault() {}, pointerId: 1, pointerType: 'touch', clientX: W / 2 * S, clientY: (H / 2 + 10) * S });
+  assert.equal(game().state, 'campaignIntermission');
+  assert.equal(game().campaignTransition().paused, false);
+  assert.equal(game().campaignTransition().remaining, remaining);
+});
+
+test('Enter and Space resume a paused campaign intermission without skipping its card', () => {
+  for (const key of ['Enter', ' ']) {
+    const game = bootGame({ getItem: () => null, setItem() {} });
+    game().startCampaign();
+    game().advanceGame(20);
+    game().pause();
+    const remaining = game().campaignTransition().remaining;
+    game().windowEvents.get('keydown')({ key, target: game().canvas, preventDefault() {}, repeat: false });
+    assert.equal(game().state, 'campaignIntermission', key + ' returns to the card');
+    assert.equal(game().campaignTransition().paused, false, key + ' clears the paused flag');
+    assert.equal(game().campaignTransition().remaining, remaining, key + ' preserves the remaining countdown');
+  }
+});
+
+test('the fifth mini uses a distinct 2.4 second Boss preview, including under Reduced Motion', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} }, { reducedMotion: true });
+  game().startCampaign();
+  for (let node = 0; node < 4; node++) { game().advanceGame(20); advanceIntermission(game); }
+  game().advanceGame(20);
+  assert.equal(game().state, 'campaignIntermission');
+  assert.equal(game().campaignNode(), 5);
+  assert.equal(game().campaignTransition().duration, 2.4);
+  assert.equal(game().campaignTransition().bannerTimer, 0);
+  assert.equal(game().campaignTransition().boss, true);
+  assert.match(game().statusText(), /Big Boss preview/);
+  game().clearCanvasCalls();
+  game().drawFrame(16);
+  assert.equal(game().canvasCalls().some(call => call.name === 'fillText' && call.args[0] === 'BIG BOSS INBOUND'), true);
+  assert.equal(game().reducedMotion(), true);
+  assert.equal(game().motion(24), 0);
+  game().advanceIntermission(2.4);
+  assert.equal(game().state, 'play');
+  game().advanceGame(0.016);
+  assert.equal(game().bossActive(), true);
 });
 
 test('campaign stage runtime follows centrally configured 15- and 25-second durations', () => {
@@ -735,6 +844,7 @@ test('T2 duration candidates route all five mini roles across twelve worlds into
         assert.equal(game().campaignNode(), node, `candidate ${duration}s must not clear World ${world + 1}, mini ${node + 1} early`);
         game().advanceGame(0.01);
         assert.equal(game().campaignNode(), node + 1, `candidate ${duration}s clears World ${world + 1}, mini ${node + 1} on its boundary`);
+        advanceIntermission(game);
       }
       assert.equal(game().campaignNode(), 5, `candidate ${duration}s reaches the World ${world + 1} Boss only after five minis`);
       game().advanceGame(0.016);
@@ -769,6 +879,7 @@ test('Campaign runtime routes all 72 nodes through twelve Boss settlements and t
       assert.equal(game().campaignNode(), node, `world ${world + 1}, mini ${node + 1} must hold before ${duration} seconds`);
       game().advanceGame(0.01);
       assert.equal(game().campaignNode(), node + 1);
+      advanceIntermission(game);
     }
     game().advanceGame(0.016);
     assert.equal(game().bossActive(), true, `world ${world + 1} must start its own Boss`);
@@ -796,7 +907,7 @@ test('Normal World 1 Big Boss is beatable with collected orbs and no purchased u
   const values = new Map();
   const game = bootGame({ getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)) });
   game().startCampaign();
-  for (let node = 0; node < 5; node++) game().advanceGame(20);
+  for (let node = 0; node < 5; node++) { game().advanceGame(20); advanceIntermission(game); }
   game().advanceGame(0.016);
   assert.equal(game().bossActive(), true);
   assert.equal(game().meta.u.every(level => level === 0), true);
@@ -829,7 +940,7 @@ test('campaign completion preserves legacy level records and run counters', () =
   const values = new Map([[api.META_KEY, JSON.stringify(initial)]]);
   const game = bootGame({ getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)) });
   game().startCampaign();
-  for (let node = 0; node < 5; node++) game().advanceGame(20);
+  for (let node = 0; node < 5; node++) { game().advanceGame(20); advanceIntermission(game); }
   game().advanceGame(0.016);
   game().forceCampaignBoss();
   game().advanceGame(0);
@@ -843,7 +954,7 @@ test('Reduced Motion preserves the final mini-stage Boss warning cue', () => {
   const values = new Map();
   const game = bootGame({ getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)) }, { reducedMotion: true });
   game().startCampaign();
-  for (let node = 0; node < 4; node++) game().advanceGame(20);
+  for (let node = 0; node < 4; node++) { game().advanceGame(20); advanceIntermission(game); }
   assert.equal(game().campaignNode(), 4);
   game().advanceGame(14.99);
   assert.doesNotMatch(game().statusText(), /Boss signal detected/);
@@ -864,7 +975,7 @@ test('campaign Boss victory is saved as a receipt; reload and acknowledgment gat
   const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)) };
   const game = bootGame(storage);
   game().startCampaign();
-  for (let node = 0; node < 5; node++) game().advanceGame(20);
+  for (let node = 0; node < 5; node++) { game().advanceGame(20); advanceIntermission(game); }
   game().advanceGame(0.016);
   game().forceCampaignBoss();
   game().advanceGame(0);
@@ -889,7 +1000,7 @@ test('fatal outcome in the Boss defeat frame prevents campaign victory settlemen
   const values = new Map();
   const game = bootGame({ getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)) });
   game().startCampaign();
-  for (let node = 0; node < 5; node++) game().advanceGame(20);
+  for (let node = 0; node < 5; node++) { game().advanceGame(20); advanceIntermission(game); }
   game().advanceGame(0.016);
   game().forceCampaignBoss();
   game().forceFatal();
@@ -909,7 +1020,7 @@ test('failed Boss settlement write freezes victory until Retry Save commits the 
   } };
   const game = bootGame(storage);
   game().startCampaign();
-  for (let node = 0; node < 5; node++) game().advanceGame(20);
+  for (let node = 0; node < 5; node++) { game().advanceGame(20); advanceIntermission(game); }
   game().advanceGame(0.016);
   const durableBeforeBoss = plain(api.decodeMeta(values.get(api.META_KEY)).meta);
   failMainWrite = true;
@@ -948,6 +1059,8 @@ test('failed mini clear write freezes the node and Retry Save commits before sim
   assert.equal(game().meta.campaign.worlds[0].mini, 0);
   failMainWrite = false;
   game().accessibleActions.find(button => button.dataset.action === 'retry-save').click();
+  assert.equal(game().state, 'campaignIntermission');
+  advanceIntermission(game);
   assert.equal(game().state, 'play');
   assert.equal(game().meta.campaign.checkpoint.node, 1);
   assert.equal(game().meta.campaign.worlds[0].mini, 1);
@@ -976,7 +1089,7 @@ test('v1 migration refuses to overwrite a different existing backup and preserve
   assert.equal(values.get(api.META_BACKUP_KEY), priorBackup);
 });
 
-test('v1 migration keeps exact source and backup when the main v2 write fails', () => {
+test('v1 migration keeps exact source and backup when the main v3 write fails', () => {
   const raw = JSON.stringify({ version: 1, data: { c: 29, lv: [{ cl: 1, sc: 77 }] } });
   const values = new Map([[api.META_KEY, raw]]);
   const storage = { getItem: key => values.get(key) ?? null, setItem(key, value) {
@@ -989,7 +1102,7 @@ test('v1 migration keeps exact source and backup when the main v2 write fails', 
   assert.equal(values.get(api.META_BACKUP_KEY), raw);
 });
 
-test('game startup backs up a valid v1 save before writing the v2 envelope', () => {
+test('game startup backs up a valid v1 save before writing the current envelope', () => {
   const today = new Date().toISOString().slice(0, 10);
   const levels = Array.from({ length: 12 }, (_, i) => ({ cl: i % 2, sc: 200 + i, c: i, k: 1, b: 0, g: 40 + i }));
   const raw = JSON.stringify({ version: 1, data: { c: 99, ld: today, ms: { d: today, p: [1, 2, 3], c: [0, 1, 0] }, lv: levels } });
@@ -999,7 +1112,7 @@ test('game startup backs up a valid v1 save before writing the v2 envelope', () 
   assert.equal(game().readOnly, false);
   assert.equal(values.get(api.META_BACKUP_KEY), raw);
   const saved = JSON.parse(values.get(api.META_KEY));
-  assert.equal(saved.version, 2);
+  assert.equal(saved.version, api.META_VERSION);
   assert.equal(saved.data.c, 99);
   assert.deepEqual(plain(saved.data.lv), levels);
   assert.equal(plain(api.decodeMeta(values.get(api.META_KEY))).meta.campaign.worlds.length, 12);
@@ -1291,7 +1404,11 @@ test('accessible controls complete shop purchases, skill activation, and level n
   assert.equal(game().meta.k[0], 1);
   assert.equal(game().meta.c, 2750);
   assert.equal(pulse.disabled, true, 'an owned skill cannot be purchased twice');
-  const saved = JSON.parse(values.get('neon-drift-meta'));
+  assert.equal(game().state, 'unlock', 'a first skill purchase presents its unlock screen');
+  game().setNow(1601);
+  action('continue').click();
+  assert.equal(game().state, 'shop', 'Continue dismisses the unlock presentation back to the shop');
+  const saved = JSON.parse(values.get(api.META_KEY));
   assert.equal(saved.version, api.META_VERSION);
   assert.equal(saved.data.k[0], 1);
   const reloaded = bootGame(storage);
@@ -1356,7 +1473,8 @@ test('boss continue is state guarded and becomes available after its presentatio
 
 test('first-run guidance matches live controls and results announce an accurate one-time summary', () => {
   assert.match(source, /Collect cyan orbs and dodge pink hazards/);
-  assert.match(source, /1–4 skills · P or Esc pauses/);
+  assert.match(source, /Press Enter or Space to start or select the focused game canvas action/);
+  assert.match(source, /Press P or Escape to pause or resume, Q to quit while paused, and M to toggle sound/);
   assert.match(source, /Skills: 1–4 in play/);
   assert.match(source, /Cyan = collect · Pink = dodge/);
   assert.match(source, /\.accessible-controls button\{min-height:34px/);
@@ -1616,20 +1734,26 @@ test('unlocked and cleared later-level gallery cards render from saved progress'
 });
 
 test('ship color button cycles the five core style-guide colorways without score gates', () => {
-  const values = new Map([['neon-drift-best', '0']]);
+  const prefix = sourceName.includes('-dev') ? 'neon-drift-dev' : 'neon-drift';
+  const skinKey = prefix + '-skin';
+  const values = new Map([[prefix + '-best', '0'], [skinKey, '0']]);
   const game = bootGame({ getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)) });
   const expected = [
     ['Ember', '#ff9f43'], ['Mint', '#5dffb0'], ['Violet', '#b46bff'], ['Gold', '#ffd23f'], ['Classic', '#e8f0ff'],
   ];
   const { S, W, H } = game().geometry();
-  const shipButtonClick = game().canvasEvents.get('pointerdown');
+  const canvasClick = game().canvasEvents.get('pointerdown');
+  const canvasUp = game().canvasEvents.get('pointerup');
+  const click = (y, pointerId) => { canvasClick({ preventDefault() {}, pointerId, pointerType: 'touch', clientX: S * W / 2, clientY: S * y }); canvasUp({ pointerId, pointerType: 'touch' }); };
+  click(H / 2 + 110, 1);
+  assert.equal(game().state, 'hangar', 'the menu Hangar action opens ship options');
   for (const [name, color] of expected) {
-    shipButtonClick({ preventDefault() {}, pointerId: 1, clientX: S * W / 2, clientY: S * (H / 2 + 110) });
+    click(H / 2 + 57, 2);
     assert.equal(game().skinName(), name);
     assert.equal(game().skinColor(), color);
     assert.match(game().accessibleActions.find(button => button.dataset.action === 'ship').textContent, new RegExp(name));
   }
-  assert.equal(values.get('neon-drift-skin'), '0');
+  assert.equal(values.get(skinKey), '0', 'the five core colorway cycle returns to the stored default');
 
   game().meta.tb = 1;
   game().advanceSkin();
