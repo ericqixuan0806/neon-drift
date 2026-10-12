@@ -35,7 +35,7 @@ function bootGame(storage, { storageGetterThrows = false, reducedMotion = false,
       addEventListener: (type, handler) => handlers.set(type, handler),
       click() { if (!this.disabled) handlers.get('click')?.(); } };
   });
-  const accessibleActions = makeButtons('action', ['campaign','campaign-map','endless','start','daily','pause','retry-save','retry','menu','ship','shop','levels','missions','stats','settings','difficulty','export','shop-prev','shop-next','level-prev','level-next','continue']);
+  const accessibleActions = makeButtons('action', ['campaign','campaign-map','endless','start','daily','pause','skip-intermission','retry-save','retry','menu','ship','shop','levels','missions','stats','settings','difficulty','export','shop-prev','shop-next','level-prev','level-next','continue']);
   const accessibleUpgrades = makeButtons('buyUpgrade', Array.from({ length: 11 }, (_, i) => String(i)));
   const accessibleSkillBuys = makeButtons('buySkill', ['0','1','2','3']);
   const accessibleSkills = makeButtons('skill', ['0','1','2','3']);
@@ -80,7 +80,7 @@ function bootGame(storage, { storageGetterThrows = false, reducedMotion = false,
     setTimeout: () => 0,
   };
   Object.defineProperty(sandbox, 'localStorage', { get() { if (storageGetterThrows) throw new Error('storage denied'); return storage; } });
-  vm.runInNewContext(`${inlineScript}\nglobalThis.probe=()=>({state:st,meta:M,readOnly:saveReadOnly,reason:saveReason,recoveryRaw:()=>saveRecoveryRaw,start,startCampaign,campaignCommitMiniNode,campaignCommitBossNode,acknowledgeCampaignSettlement,retryCampaignSave,pause,end,hit,sv,advanceSkin,ok,skin:()=>skin,skinName:()=>SK[skin][0],skinColor:()=>SK[skin][1],geometry:()=>({S,W,H,dpr,x:px,ox,PW,canvasWidth:cv.width,canvasHeight:cv.height,py,hh,hw}),skillPosition:i=>({x:sx(i),y:H-32}),setTheme:index=>{t=index*25;lvp=index;th=index;st='play'},themeIndex:()=>th,setGalleryLevel:index=>{th=index;lp=index;st='lv'},levelData:()=>({themes:TH,lore:LORE,obstacles:OB,bosses:BN,hints:LEVEL_HINTS}),isLevelUnlocked:levelUnlocked,drawHazard:index=>{th=index;hzArt({x:100,y:80,w:38,h:30,v:150,theme:index})},drawOrbMark:index=>orbMark(100,80,index),canvasCalls:()=>canvasCalls,clearCanvasCalls:()=>canvasCalls.length=0,prepareSpawnTheme:index=>{t=index*25;lvp=index;th=index;st='play';wv=0;bo=null},setDifficulty:index=>{gm=index},setMissionRotation:index=>{mh=index},runKind:()=>runKind,campaignNode:()=>campaignNode,campaignWorld:()=>campaignWorld,setShipX:value=>{px=tx=value},animationTime:()=>last,campaignTransition:()=>({remaining:campaignTransitionRemaining,duration:campaignTransitionDuration,boss:campaignTransitionBoss,completed:campaignTransitionCompleted,paused:campaignIntermissionPaused,simTime:t,score:sc,spawnTimer:tm,objects:objs.length,shipX:px,bannerTimer:bt,toastTimer:tt}),advanceIntermission:seconds=>{const target=Math.max(0,campaignTransitionRemaining-seconds);let now=last;while(st=='campaignIntermission'&&campaignTransitionRemaining>target){now+=Math.min(50,Math.max(1,(campaignTransitionRemaining-target)*1000));frame(now)}},campaignRun:()=>campaignRun,campaignConfiguration:()=>JSON.parse(JSON.stringify(CAMPAIGN_WORLDS)),campaignStageProfile:()=>campaignNodeConfig(campaignWorld,campaignNode),campaignProfile:(world,node)=>campaignNodeConfig(world,node),campaignStageDuration:campaignStageSeconds,validateCampaignWorlds,setCampaignDuration:(world,node,seconds)=>{const stage=CAMPAIGN_WORLDS[world].stages[node];stage.durationSeconds=seconds;if(stage.warningAt)stage.warningAt=Math.min(15,seconds-5)},prepareCampaignProfile:(world,node)=>{runKind='campaign';campaignWorld=world;campaignNode=node;st='play';th=world;objs=[];spd=180},campaignWallCenter, campaignRewards:()=>plainCampaignAttempt(),missionPlan:()=>[0,1,2].map(i=>MP[(mh+i*2)%6]),mp,waveState:()=>({active:wv,elapsed:wt,next:nw}),bossActive:()=>!!bo,bossSummary:()=>({big:bo?.big,label:bn,hp:bo?.hp}),forceCampaignBoss:()=>{bo={x:100};bossDown()},campaignOrbAtShip:()=>{tm=100;objs=[{k:'o',x:px,y:py,r:10,v:0}]},forceFatal:()=>{li=0;dth=1;end()},setRandom:value=>{rngCalls=0;rnd=()=>{rngCalls++;return value}},randomCalls:()=>rngCalls,spawnForLevel,objects:()=>objs,levelDuration:()=>LEVEL_SECONDS,campaignDuration,gameSpeed:()=>spd,stageIndex:currentLevelIndex,stageProgress:()=>({lvp,campaignClear}),stageRecords:()=>M.lv,prepareStage:(seconds,previous)=>{runKind='legacy';st='play';t=seconds;lvp=previous;th=currentLevelIndex();sc=180;rc=17;rk=2;rb=1;s0=80;tm=100;campaignClear=false},advanceGame:upd,canvas:cv,page:document,statusText:()=>gameStatus.textContent,reducedMotion:()=>rm,motion,deathSlowdown:()=>dth,drawFrame:(time=16)=>frame(Math.max(last+16,time)),scheduledFrames:()=>animationFrames.length,refreshAccessibleControls,keys:()=>[kl,kr,drag],steeringTarget:()=>tx,shopPage:()=>pg,levelPage:()=>lp,cooldowns:()=>cd,winReady:()=>winContinueReady,elapsed:()=>performance.now()-ot2,prepareWin:()=>{st='win';bc++;ot2=performance.now();refreshAccessibleControls()},continueAfterBoss,setNow:value=>{clock.now=value},windowEvents,documentEvents,canvasEvents,mediaEvents,accessibleActions,accessibleSettings,accessibleUpgrades,accessibleSkillBuys,accessibleSkills});function plainCampaignAttempt(){return campaignAttempt?JSON.parse(JSON.stringify(campaignAttempt)):null}`, sandbox);
+  vm.runInNewContext(`${inlineScript}\nglobalThis.probe=()=>({state:st,meta:M,readOnly:saveReadOnly,reason:saveReason,recoveryRaw:()=>saveRecoveryRaw,start,startCampaign,campaignCommitMiniNode,campaignCommitBossNode,acknowledgeCampaignSettlement,retryCampaignSave,pause,end,hit,sv,advanceSkin,ok,skin:()=>skin,skinName:()=>SK[skin][0],skinColor:()=>SK[skin][1],geometry:()=>({S,W,H,dpr,x:px,ox,PW,canvasWidth:cv.width,canvasHeight:cv.height,py,hh,hw}),skillPosition:i=>({x:sx(i),y:H-32}),setTheme:index=>{t=index*25;lvp=index;th=index;st='play'},themeIndex:()=>th,setGalleryLevel:index=>{th=index;lp=index;st='lv'},levelData:()=>({themes:TH,lore:LORE,obstacles:OB,bosses:BN,hints:LEVEL_HINTS}),isLevelUnlocked:levelUnlocked,drawHazard:index=>{th=index;hzArt({x:100,y:80,w:38,h:30,v:150,theme:index})},drawOrbMark:index=>orbMark(100,80,index),canvasCalls:()=>canvasCalls,clearCanvasCalls:()=>canvasCalls.length=0,prepareSpawnTheme:index=>{t=index*25;lvp=index;th=index;st='play';wv=0;bo=null},setDifficulty:index=>{gm=index},setMissionRotation:index=>{mh=index},runKind:()=>runKind,campaignNode:()=>campaignNode,campaignWorld:()=>campaignWorld,setShipX:value=>{px=tx=value},animationTime:()=>last,campaignTransition:()=>({remaining:campaignTransitionRemaining,duration:campaignTransitionDuration,boss:campaignTransitionBoss,completed:campaignTransitionCompleted,paused:campaignIntermissionPaused,simTime:t,score:sc,spawnTimer:tm,objects:objs.length,shipX:px,bannerTimer:bt,toastTimer:tt}),skipBounds:campaignSkipBounds,advanceIntermission:seconds=>{const target=Math.max(0,campaignTransitionRemaining-seconds);let now=last;while(st=='campaignIntermission'&&campaignTransitionRemaining>target){now+=Math.min(50,Math.max(1,(campaignTransitionRemaining-target)*1000));frame(now)}},campaignRun:()=>campaignRun,campaignConfiguration:()=>JSON.parse(JSON.stringify(CAMPAIGN_WORLDS)),campaignStageProfile:()=>campaignNodeConfig(campaignWorld,campaignNode),campaignProfile:(world,node)=>campaignNodeConfig(world,node),campaignStageDuration:campaignStageSeconds,validateCampaignWorlds,setCampaignDuration:(world,node,seconds)=>{const stage=CAMPAIGN_WORLDS[world].stages[node];stage.durationSeconds=seconds;if(stage.warningAt)stage.warningAt=Math.min(15,seconds-5)},prepareCampaignProfile:(world,node)=>{runKind='campaign';campaignWorld=world;campaignNode=node;st='play';th=world;objs=[];spd=180},campaignWallCenter, campaignRewards:()=>plainCampaignAttempt(),missionPlan:()=>[0,1,2].map(i=>MP[(mh+i*2)%6]),mp,waveState:()=>({active:wv,elapsed:wt,next:nw}),bossActive:()=>!!bo,bossSummary:()=>({big:bo?.big,label:bn,hp:bo?.hp}),forceCampaignBoss:()=>{bo={x:100};bossDown()},campaignOrbAtShip:()=>{tm=100;objs=[{k:'o',x:px,y:py,r:10,v:0}]},forceFatal:()=>{li=0;dth=1;end()},setRandom:value=>{rngCalls=0;rnd=()=>{rngCalls++;return value}},randomCalls:()=>rngCalls,spawnForLevel,objects:()=>objs,levelDuration:()=>LEVEL_SECONDS,campaignDuration,gameSpeed:()=>spd,stageIndex:currentLevelIndex,stageProgress:()=>({lvp,campaignClear}),stageRecords:()=>M.lv,prepareStage:(seconds,previous)=>{runKind='legacy';st='play';t=seconds;lvp=previous;th=currentLevelIndex();sc=180;rc=17;rk=2;rb=1;s0=80;tm=100;campaignClear=false},advanceGame:upd,canvas:cv,page:document,statusText:()=>gameStatus.textContent,reducedMotion:()=>rm,motion,deathSlowdown:()=>dth,drawFrame:(time=16)=>frame(Math.max(last+16,time)),scheduledFrames:()=>animationFrames.length,refreshAccessibleControls,keys:()=>[kl,kr,drag],steeringTarget:()=>tx,shopPage:()=>pg,levelPage:()=>lp,cooldowns:()=>cd,winReady:()=>winContinueReady,elapsed:()=>performance.now()-ot2,prepareWin:()=>{st='win';bc++;ot2=performance.now();refreshAccessibleControls()},continueAfterBoss,setNow:value=>{clock.now=value},windowEvents,documentEvents,canvasEvents,mediaEvents,accessibleActions,accessibleSettings,accessibleUpgrades,accessibleSkillBuys,accessibleSkills});function plainCampaignAttempt(){return campaignAttempt?JSON.parse(JSON.stringify(campaignAttempt)):null}`, sandbox);
   return sandbox.probe;
 }
 
@@ -722,16 +722,16 @@ test('campaign mini intermissions freeze play, retain ship position, pause safel
   assert.equal(game().state, 'campaignIntermission');
   const enteredTransition = plain(game().campaignTransition());
   assert.ok(enteredTransition.score >= 100, 'the completed mini keeps its committed score');
-  assert.deepEqual({ ...enteredTransition, score: 100 }, { remaining: 1.8, duration: 1.8, boss: false, completed: 0, paused: false, simTime: 0, score: 100, spawnTimer: 1.1, objects: 0, shipX: 300, bannerTimer: 0, toastTimer: 4 });
+  assert.deepEqual({ ...enteredTransition, score: 100 }, { remaining: 5, duration: 5, boss: false, completed: 0, paused: false, simTime: 0, score: 100, spawnTimer: 1.1, objects: 0, shipX: 300, bannerTimer: 0, toastTimer: 4 });
   const transitionAnnouncement = game().statusText();
   assert.match(transitionAnnouncement, /Mini 1 of 5 complete.*Next: mini 2 of 5/);
-  assert.match(transitionAnnouncement, /Gameplay starts in 2 seconds/, 'the accessible countdown uses whole seconds');
+  assert.match(transitionAnnouncement, /Gameplay starts in 5 seconds/, 'the accessible countdown uses whole seconds');
   assert.equal(game().accessibleActions.find(button => button.dataset.action === 'pause').disabled, false);
   game().clearCanvasCalls();
   game().drawFrame(5000);
   assert.equal(game().statusText(), transitionAnnouncement, 'stationary frames do not repeat the transition announcement');
-  assert.equal(game().canvasCalls().some(call => call.name === 'fillText' && call.args[0] === 'STARTING IN 2s'), true, 'the 1.8-second card uses a whole-second countdown');
-  game().advanceIntermission(1.2);
+  assert.equal(game().canvasCalls().some(call => call.name === 'fillText' && call.args[0] === 'STARTING IN 5s'), true, 'the 5-second card uses a whole-second countdown');
+  game().advanceIntermission(4.3);
   assert.match(game().statusText(), /Gameplay starts in READY/, 'the accessible cue announces the protected READY interval');
   game().clearCanvasCalls();
   game().drawFrame(10000);
@@ -763,6 +763,48 @@ test('campaign mini intermissions freeze play, retain ship position, pause safel
   assert.ok(game().campaignTransition().spawnTimer > 0);
 });
 
+test('the intermission card tap target skips the countdown but remains inactive outside the card state', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  game().startCampaign();
+  game().advanceGame(20);
+  assert.equal(game().state, 'campaignIntermission');
+  const { S, W, H } = game().geometry();
+  const bounds = game().skipBounds();
+  assert.ok(bounds.w >= 112);
+  game().drawFrame(16);
+  assert.equal(game().canvasCalls().some(call => call.name === 'fillText' && call.args[0] === 'TAP TO SKIP · START NOW'), true);
+  const pointerdown = game().canvasEvents.get('pointerdown');
+  const pointerup = game().canvasEvents.get('pointerup');
+  const clickAt = (x, y, pointerId) => pointerdown({ preventDefault() {}, pointerId, pointerType: 'touch', clientX: x * S, clientY: y * S });
+  clickAt(W / 2, H / 2 + 80, 1);
+  assert.equal(game().state, 'campaignIntermission', 'clicking outside the skip target keeps the intermission');
+  pointerup({ pointerId: 1, pointerType: 'touch' });
+  game().pause();
+  clickAt(W / 2, H / 2 + 126, 2);
+  assert.equal(game().state, 'pause', 'the target cannot skip while the intermission is paused');
+  pointerup({ pointerId: 2, pointerType: 'touch' });
+  game().pause();
+  clickAt(bounds.x + bounds.w / 2, bounds.y + bounds.h / 2, 3);
+  assert.equal(game().state, 'play');
+  assert.equal(game().campaignTransition().remaining, 0);
+  assert.ok(game().campaignTransition().spawnTimer >= 0.7, 'skip retains the protected start window');
+  game().drawFrame(32);
+  assert.match(game().statusText(), /Gameplay starts now/);
+});
+
+test('accessible skip action starts the next campaign mini stage immediately', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  game().startCampaign();
+  game().advanceGame(20);
+  const skip = game().accessibleActions.find(button => button.dataset.action === 'skip-intermission');
+  assert.equal(skip.disabled, false);
+  skip.click();
+  assert.equal(game().state, 'play');
+  assert.equal(game().campaignNode(), 1);
+  game().drawFrame(16);
+  assert.match(game().statusText(), /Gameplay starts now/);
+});
+
 test('canvas resume click preserves a paused campaign intermission and its remaining time', () => {
   const game = bootGame({ getItem: () => null, setItem() {} });
   game().startCampaign();
@@ -791,23 +833,25 @@ test('Enter and Space resume a paused campaign intermission without skipping its
   }
 });
 
-test('the fifth mini uses a distinct 2.4 second Boss preview, including under Reduced Motion', () => {
+test('the fifth mini uses a distinct 8 second Boss preview, including under Reduced Motion', () => {
   const game = bootGame({ getItem: () => null, setItem() {} }, { reducedMotion: true });
   game().startCampaign();
   for (let node = 0; node < 4; node++) { game().advanceGame(20); advanceIntermission(game); }
   game().advanceGame(20);
   assert.equal(game().state, 'campaignIntermission');
   assert.equal(game().campaignNode(), 5);
-  assert.equal(game().campaignTransition().duration, 2.4);
+  assert.equal(game().campaignTransition().duration, 8);
   assert.equal(game().campaignTransition().bannerTimer, 0);
   assert.equal(game().campaignTransition().boss, true);
   assert.match(game().statusText(), /Big Boss preview/);
+  assert.match(game().statusText(), /Gameplay starts in 8 seconds/);
   game().clearCanvasCalls();
   game().drawFrame(16);
   assert.equal(game().canvasCalls().some(call => call.name === 'fillText' && call.args[0] === 'BIG BOSS INBOUND'), true);
+  assert.equal(game().canvasCalls().some(call => call.name === 'fillText' && call.args[0] === 'STARTING IN 8s'), true, 'the Boss preview shows an accurate countdown');
   assert.equal(game().reducedMotion(), true);
   assert.equal(game().motion(24), 0);
-  game().advanceIntermission(2.4);
+  game().advanceIntermission(8);
   assert.equal(game().state, 'play');
   game().advanceGame(0.016);
   assert.equal(game().bossActive(), true);
