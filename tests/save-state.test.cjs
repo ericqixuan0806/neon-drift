@@ -47,7 +47,7 @@ function bootGame(storage, { storageGetterThrows = false, reducedMotion = false,
     measureText: value => ({ width: String(value).length * 8 }),
     createLinearGradient: () => ({ addColorStop() {} }),
     createRadialGradient: () => ({ addColorStop() {} }),
-  }, { get(target, key) { return key in target ? target[key] : (...args) => canvasCalls.push({ name: key, args, fillStyle: target.fillStyle }); } });
+  }, { get(target, key) { return key in target ? target[key] : (...args) => canvasCalls.push({ name: key, args, fillStyle: target.fillStyle, strokeStyle: target.strokeStyle }); } });
   const CanvasRenderingContext2D = function CanvasRenderingContext2D() {};
   Object.defineProperty(CanvasRenderingContext2D.prototype, 'shadowBlur', {
     configurable: true,
@@ -80,9 +80,63 @@ function bootGame(storage, { storageGetterThrows = false, reducedMotion = false,
     setTimeout: () => 0,
   };
   Object.defineProperty(sandbox, 'localStorage', { get() { if (storageGetterThrows) throw new Error('storage denied'); return storage; } });
-  vm.runInNewContext(`${inlineScript}\nglobalThis.probe=()=>({state:st,meta:M,readOnly:saveReadOnly,reason:saveReason,recoveryRaw:()=>saveRecoveryRaw,start,startCampaign,campaignCommitMiniNode,campaignCommitBossNode,acknowledgeCampaignSettlement,retryCampaignSave,pause,end,hit,sv,advanceSkin,ok,skin:()=>skin,skinName:()=>SK[skin][0],skinColor:()=>SK[skin][1],geometry:()=>({S,W,H,dpr,x:px,ox,PW,canvasWidth:cv.width,canvasHeight:cv.height,py,hh,hw}),skillPosition:i=>({x:sx(i),y:H-32}),setTheme:index=>{t=index*25;lvp=index;th=index;st='play'},themeIndex:()=>th,setGalleryLevel:index=>{th=index;lp=index;st='lv'},levelData:()=>({themes:TH,lore:LORE,obstacles:OB,bosses:BN,hints:LEVEL_HINTS}),isLevelUnlocked:levelUnlocked,drawHazard:index=>{th=index;hzArt({x:100,y:80,w:38,h:30,v:150,theme:index})},drawOrbMark:index=>orbMark(100,80,index),canvasCalls:()=>canvasCalls,clearCanvasCalls:()=>canvasCalls.length=0,prepareSpawnTheme:index=>{t=index*25;lvp=index;th=index;st='play';wv=0;bo=null},setDifficulty:index=>{gm=index},setMissionRotation:index=>{mh=index},runKind:()=>runKind,campaignNode:()=>campaignNode,campaignWorld:()=>campaignWorld,setShipX:value=>{px=tx=value},animationTime:()=>last,campaignTransition:()=>({remaining:campaignTransitionRemaining,duration:campaignTransitionDuration,boss:campaignTransitionBoss,completed:campaignTransitionCompleted,paused:campaignIntermissionPaused,simTime:t,score:sc,spawnTimer:tm,objects:objs.length,shipX:px,bannerTimer:bt,toastTimer:tt}),skipBounds:campaignSkipBounds,advanceIntermission:seconds=>{const target=Math.max(0,campaignTransitionRemaining-seconds);let now=last;while(st=='campaignIntermission'&&campaignTransitionRemaining>target){now+=Math.min(50,Math.max(1,(campaignTransitionRemaining-target)*1000));frame(now)}},campaignRun:()=>campaignRun,campaignConfiguration:()=>JSON.parse(JSON.stringify(CAMPAIGN_WORLDS)),campaignStageProfile:()=>campaignNodeConfig(campaignWorld,campaignNode),campaignProfile:(world,node)=>campaignNodeConfig(world,node),campaignStageDuration:campaignStageSeconds,validateCampaignWorlds,setCampaignDuration:(world,node,seconds)=>{const stage=CAMPAIGN_WORLDS[world].stages[node];stage.durationSeconds=seconds;if(stage.warningAt)stage.warningAt=Math.min(15,seconds-5)},prepareCampaignProfile:(world,node)=>{runKind='campaign';campaignWorld=world;campaignNode=node;st='play';th=world;objs=[];spd=180},campaignWallCenter, campaignRewards:()=>plainCampaignAttempt(),missionPlan:()=>[0,1,2].map(i=>MP[(mh+i*2)%6]),mp,waveState:()=>({active:wv,elapsed:wt,next:nw}),bossActive:()=>!!bo,bossSummary:()=>({big:bo?.big,label:bn,hp:bo?.hp}),forceCampaignBoss:()=>{bo={x:100};bossDown()},campaignOrbAtShip:()=>{tm=100;objs=[{k:'o',x:px,y:py,r:10,v:0}]},forceFatal:()=>{li=0;dth=1;end()},setRandom:value=>{rngCalls=0;rnd=()=>{rngCalls++;return value}},randomCalls:()=>rngCalls,spawnForLevel,objects:()=>objs,levelDuration:()=>LEVEL_SECONDS,campaignDuration,gameSpeed:()=>spd,stageIndex:currentLevelIndex,stageProgress:()=>({lvp,campaignClear}),stageRecords:()=>M.lv,prepareStage:(seconds,previous)=>{runKind='legacy';st='play';t=seconds;lvp=previous;th=currentLevelIndex();sc=180;rc=17;rk=2;rb=1;s0=80;tm=100;campaignClear=false},advanceGame:upd,canvas:cv,page:document,statusText:()=>gameStatus.textContent,reducedMotion:()=>rm,motion,deathSlowdown:()=>dth,drawFrame:(time=16)=>frame(Math.max(last+16,time)),scheduledFrames:()=>animationFrames.length,refreshAccessibleControls,keys:()=>[kl,kr,drag],steeringTarget:()=>tx,shopPage:()=>pg,levelPage:()=>lp,cooldowns:()=>cd,winReady:()=>winContinueReady,elapsed:()=>performance.now()-ot2,prepareWin:()=>{st='win';bc++;ot2=performance.now();refreshAccessibleControls()},continueAfterBoss,setNow:value=>{clock.now=value},windowEvents,documentEvents,canvasEvents,mediaEvents,accessibleActions,accessibleSettings,accessibleUpgrades,accessibleSkillBuys,accessibleSkills});function plainCampaignAttempt(){return campaignAttempt?JSON.parse(JSON.stringify(campaignAttempt)):null}`, sandbox);
+  vm.runInNewContext(`${inlineScript}\nglobalThis.probe=()=>({state:st,meta:M,readOnly:saveReadOnly,reason:saveReason,recoveryRaw:()=>saveRecoveryRaw,start,startCampaign,campaignCommitMiniNode,campaignCommitBossNode,acknowledgeCampaignSettlement,retryCampaignSave,pause,end,hit,sv,advanceSkin,ok,skin:()=>skin,skinName:()=>SK[skin][0],skinColor:()=>SK[skin][1],geometry:()=>({S,W,H,dpr,x:px,ox,PW,canvasWidth:cv.width,canvasHeight:cv.height,py,hh,hw}),skillPosition:i=>({x:sx(i),y:H-32}),setTheme:index=>{t=index*25;lvp=index;th=index;st='play'},themeIndex:()=>th,setGalleryLevel:index=>{th=index;lp=index;st='lv'},levelData:()=>({themes:TH,lore:LORE,obstacles:OB,bosses:BN,hints:LEVEL_HINTS}),isLevelUnlocked:levelUnlocked,drawHazard:index=>{th=index;hzArt({x:100,y:80,w:38,h:30,v:150,theme:index})},drawOrbMark:index=>orbMark(100,80,index),drawShip:(x=100,y=100,k=1)=>ship(x,y,k,0),setAutoCannon:(level,flash=0)=>{M.u[11]=level;af=flash},setBlasterUnlocked:value=>{M.k[3]=value?1:0},setShipClass:value=>{M.cls=value},setSkin:value=>{skin=(value+SK.length)%SK.length},setHighContrast:value=>{M.s.hc=value?1:0},canvasCalls:()=>canvasCalls,clearCanvasCalls:()=>canvasCalls.length=0,prepareSpawnTheme:index=>{t=index*25;lvp=index;th=index;st='play';wv=0;bo=null},setDifficulty:index=>{gm=index},setMissionRotation:index=>{mh=index},runKind:()=>runKind,campaignNode:()=>campaignNode,campaignWorld:()=>campaignWorld,setShipX:value=>{px=tx=value},animationTime:()=>last,campaignTransition:()=>({remaining:campaignTransitionRemaining,duration:campaignTransitionDuration,boss:campaignTransitionBoss,completed:campaignTransitionCompleted,paused:campaignIntermissionPaused,simTime:t,score:sc,spawnTimer:tm,objects:objs.length,shipX:px,bannerTimer:bt,toastTimer:tt}),skipBounds:campaignSkipBounds,advanceIntermission:seconds=>{const target=Math.max(0,campaignTransitionRemaining-seconds);let now=last;while(st=='campaignIntermission'&&campaignTransitionRemaining>target){now+=Math.min(50,Math.max(1,(campaignTransitionRemaining-target)*1000));frame(now)}},campaignRun:()=>campaignRun,campaignConfiguration:()=>JSON.parse(JSON.stringify(CAMPAIGN_WORLDS)),campaignStageProfile:()=>campaignNodeConfig(campaignWorld,campaignNode),campaignProfile:(world,node)=>campaignNodeConfig(world,node),campaignStageDuration:campaignStageSeconds,validateCampaignWorlds,setCampaignDuration:(world,node,seconds)=>{const stage=CAMPAIGN_WORLDS[world].stages[node];stage.durationSeconds=seconds;if(stage.warningAt)stage.warningAt=Math.min(15,seconds-5)},prepareCampaignProfile:(world,node)=>{runKind='campaign';campaignWorld=world;campaignNode=node;st='play';th=world;objs=[];spd=180},campaignWallCenter, campaignRewards:()=>plainCampaignAttempt(),missionPlan:()=>[0,1,2].map(i=>MP[(mh+i*2)%6]),mp,waveState:()=>({active:wv,elapsed:wt,next:nw}),bossActive:()=>!!bo,bossSummary:()=>({big:bo?.big,label:bn,hp:bo?.hp}),forceCampaignBoss:()=>{bo={x:100};bossDown()},campaignOrbAtShip:()=>{tm=100;objs=[{k:'o',x:px,y:py,r:10,v:0}]},forceFatal:()=>{li=0;dth=1;end()},setRandom:value=>{rngCalls=0;rnd=()=>{rngCalls++;return value}},randomCalls:()=>rngCalls,spawnForLevel,objects:()=>objs,levelDuration:()=>LEVEL_SECONDS,campaignDuration,gameSpeed:()=>spd,stageIndex:currentLevelIndex,stageProgress:()=>({lvp,campaignClear}),stageRecords:()=>M.lv,prepareStage:(seconds,previous)=>{runKind='legacy';st='play';t=seconds;lvp=previous;th=currentLevelIndex();sc=180;rc=17;rk=2;rb=1;s0=80;tm=100;campaignClear=false},advanceGame:upd,canvas:cv,page:document,statusText:()=>gameStatus.textContent,reducedMotion:()=>rm,motion,deathSlowdown:()=>dth,drawFrame:(time=16)=>frame(Math.max(last+16,time)),scheduledFrames:()=>animationFrames.length,refreshAccessibleControls,keys:()=>[kl,kr,drag],steeringTarget:()=>tx,shopPage:()=>pg,levelPage:()=>lp,cooldowns:()=>cd,winReady:()=>winContinueReady,elapsed:()=>performance.now()-ot2,prepareWin:()=>{st='win';bc++;ot2=performance.now();refreshAccessibleControls()},continueAfterBoss,setNow:value=>{clock.now=value},windowEvents,documentEvents,canvasEvents,mediaEvents,accessibleActions,accessibleSettings,accessibleUpgrades,accessibleSkillBuys,accessibleSkills});function plainCampaignAttempt(){return campaignAttempt?JSON.parse(JSON.stringify(campaignAttempt)):null}`, sandbox);
   return sandbox.probe;
 }
+
+test('menu ship shows distinct integrated markers for unlocked Auto Cannon and Blaster', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  const renderShip = (autoCannon, blaster, flash = 0) => {
+    game().setAutoCannon(autoCannon ? 1 : 0, flash);
+    game().setBlasterUnlocked(blaster);
+    game().clearCanvasCalls();
+    game().drawShip(100, 100, 1.5);
+    return game().canvasCalls();
+  };
+  const hasAutoCannonMark = calls => calls.some(call => call.name === 'stroke' && call.strokeStyle === '#7df9ff');
+  const blasterMarks = calls => calls.filter(call => call.name === 'stroke' && call.strokeStyle === '#fff0af').length;
+  assert.equal(hasAutoCannonMark(renderShip(false, false)), false, 'locked Auto Cannon has no cyan emitter mark');
+  assert.equal(blasterMarks(renderShip(false, false)), 0, 'locked Blaster has no gold wing emitters');
+  assert.equal(hasAutoCannonMark(renderShip(true, false)), true, 'Auto Cannon adds an integrated cyan fuselage mark');
+  assert.equal(blasterMarks(renderShip(true, false)), 0, 'Auto Cannon does not add Blaster wing marks');
+  assert.equal(hasAutoCannonMark(renderShip(false, true)), false, 'Blaster does not add an Auto Cannon mark');
+  assert.equal(blasterMarks(renderShip(false, true)), 2, 'Blaster adds a mirrored pair of gold wing emitters');
+  const both = renderShip(true, true);
+  assert.equal(hasAutoCannonMark(both), true, 'both unlocked weapons retain the cyan fuselage mark');
+  assert.equal(blasterMarks(both), 2, 'both unlocked weapons retain the gold wing pair');
+  const firing = renderShip(true, true, .07);
+  assert.equal(firing.some(call => call.name === 'fill' && call.fillStyle === '#7df9ff'), true,
+    'the cyan Auto Cannon muzzle flash remains visible during firing');
+  for (let skin = 0; skin < 10; skin++) {
+    game().setSkin(skin);
+    const marked = renderShip(true, true);
+    assert.equal(marked.filter(call => call.name === 'stroke' && call.strokeStyle === '#071521').length >= 2, true,
+      'Blaster hardpoints keep a dark contrast rim on hull color ' + skin);
+  }
+  game().setHighContrast(true);
+  const highContrast = renderShip(true, true);
+  assert.equal(highContrast.filter(call => call.name === 'stroke' && call.strokeStyle === '#fff').length >= 4, true,
+    'both weapon signatures switch to the established white high-contrast outline');
+});
+
+test('Auto Cannon marker uses a flat, set-back muzzle across all hull classes', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  const noseOffsets = [-18, -20, -17, -19];
+  noseOffsets.forEach((nose, hull) => {
+    game().setShipClass(hull);
+    game().setAutoCannon(1);
+    game().clearCanvasCalls();
+    game().drawShip(100, 100, 1.5);
+    const calls = game().canvasCalls();
+    const frontEdge = calls.findIndex((call, index) => call.name === 'moveTo' &&
+      call.args[0] === -1.8 && call.args[1] === nose + 5 &&
+      calls[index + 1]?.name === 'lineTo' && calls[index + 1].args[0] === 1.8 &&
+      calls[index + 1].args[1] === nose + 5);
+    assert.notEqual(frontEdge, -1, 'hull ' + hull + ' has a short horizontal muzzle cap behind its nose');
+    assert.equal(calls.some(call => call.name === 'moveTo' && call.args[0] === 0 &&
+      call.args[1] === nose + 2), false, 'hull ' + hull + ' no longer draws the pointed cannon tip');
+  });
+});
 
 test('inline game script parses without syntax errors', () => {
   const scripts = [...source.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1]);
