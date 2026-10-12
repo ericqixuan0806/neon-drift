@@ -2,7 +2,9 @@
 
 当前项目源码是 [`neon-drift.html`](./neon-drift.html)，这是一个自包含的 Canvas 网页游戏，直接用现代浏览器打开即可运行。项目在 GitHub Pages 上部署时由 [`index.html`](./index.html) 转到游戏入口。当前没有构建步骤或依赖安装流程；游戏字体会尝试从 Google Fonts 加载，离线时会回退到系统字体。
 
-在线游玩：[Neon Drift](https://ericqixuan0806.github.io/neon-drift/)。源码仓库：[ericqixuan0806/neon-drift](https://github.com/ericqixuan0806/neon-drift)。
+在线游玩：[正式版](https://ericqixuan0806.github.io/neon-drift/)。源码仓库：[ericqixuan0806/neon-drift](https://github.com/ericqixuan0806/neon-drift)。
+
+DEV 版：[neon-drift-dev.html](https://ericqixuan0806.github.io/neon-drift/neon-drift-dev.html)。DEV 版用于功能验证，包含开发者调试工具，并使用独立的 `neon-drift-dev-*` 浏览器存档键；正式版不包含这些调试工具。请先在 DEV 版验证功能，再将确认后的玩家功能同步至正式版。
 
 持续 UI 修改请遵循[视觉规范](./design/Neon%20Drift%20Visual%20Style%20Guide.docx)。
 
@@ -10,9 +12,13 @@
 
 游戏记录、设置、解锁内容和分数保存在浏览器 `localStorage` 中。清除浏览器站点数据会清除这些记录。
 
+## 成长系统与新武器
+
+正式版现包含飞行员经验与等级、四种飞船职业、六种模块、三种无尽变异、每周任务、技能阶级和战役星级。Auto Cannon 可用 2000 点数解锁，持续从机头发射青色弹丸；Blaster 技能从机翼交替发射金色光束，两者可以同时工作。首次解锁技能或 Auto Cannon 会显示介绍页。
+
 菜单中的飞船按钮可循环切换 Classic、Ember、Mint、Violet、Gold 五种基础配色；Rose、Ice、Lime 三种成就涂装仍按原条件解锁。配色和发光遵循视觉规范。
 
-存档使用版本化校验；可识别的旧格式会自动迁移。遇到损坏、较新版本或浏览器存储不可用时，游戏会保留原始数据并以只读方式运行。可以在“设置”中导出存档恢复文件。每日挑战、任务和登录连续天数统一按 UTC 日期计算。
+存档使用 schema 版本 3，支持从版本 1 和 2 迁移并按来源版本保留备份；可识别的旧格式会自动迁移。遇到损坏、较新版本或浏览器存储不可用时，游戏会保留原始数据并以只读方式运行。可以在“设置”中导出存档恢复文件。每日挑战、任务和登录连续天数统一按 UTC 日期计算。
 
 浏览器禁止访问 `localStorage` 时，游戏仍可启动和运行，但进度不会写入。系统启用“减少动态效果”时会关闭装饰动效、震屏、升级闪白和死亡慢放；运行中修改系统偏好也会即时应用。键盘聚焦画布时显示金色轮廓，Tab 可进入可访问操作区。
 
