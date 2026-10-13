@@ -10,7 +10,7 @@ const source = fs.readFileSync(path.join(__dirname, '..', sourceName), 'utf8');
 const core = source.split('/* save-state-core:start */')[1]?.split('/* save-state-core:end */')[0];
 assert.ok(core, 'save-state-core markers must remain in the game source');
 const sandbox = {};
-vm.runInNewContext(`${core}\nglobalThis.api={META_KEY,META_BACKUP_KEY,META_VERSION,emptyCampaign,emptyMeta,validateCampaign,campaignNextSeed,campaignStart,campaignCommitMini,campaignCommitBoss,campaignAcknowledgeSettlement,decodeMeta,readMeta,writeMeta,exportPayload};`, sandbox);
+vm.runInNewContext(`${core}\nglobalThis.api={META_KEY,META_BACKUP_KEY,META_VERSION,emptyCampaign,emptyMeta,validateCampaign,campaignNextSeed,campaignStart,campaignCommitMini,campaignCommitBoss,campaignAcknowledgeSettlement,decodeMeta,readMeta,writeMeta,validateSaveImport,applySaveImport,exportPayload};`, sandbox);
 const api = sandbox.api;
 const plain = value => JSON.parse(JSON.stringify(value));
 const hardcoreRewardComponents = (date, miniCredits = 0, bossCredits = 0) => Array.from({ length: 6 }, (_, node) => ({ node, rewards: {
@@ -35,7 +35,7 @@ function bootGame(storage, { storageGetterThrows = false, reducedMotion = false,
       addEventListener: (type, handler) => handlers.set(type, handler),
       click() { if (!this.disabled) handlers.get('click')?.(); } };
   });
-  const accessibleActions = makeButtons('action', ['campaign','campaign-map','endless','start','daily','pause','skip-intermission','retry-save','retry','menu','ship','shop','levels','missions','stats','settings','difficulty','export','shop-prev','shop-next','level-prev','level-next','continue']);
+  const accessibleActions = makeButtons('action', ['campaign','campaign-map','map-prev','map-next','map-play','endless','start','daily','pause','skip-intermission','retry-save','retry','menu','ship','hangar','hangar-page','shop','levels','missions','stats','settings','difficulty','import','export','shop-prev','shop-next','level-prev','level-next','continue']);
   const accessibleUpgrades = makeButtons('buyUpgrade', Array.from({ length: 11 }, (_, i) => String(i)));
   const accessibleSkillBuys = makeButtons('buySkill', ['0','1','2','3']);
   const accessibleSkills = makeButtons('skill', ['0','1','2','3']);
@@ -47,18 +47,22 @@ function bootGame(storage, { storageGetterThrows = false, reducedMotion = false,
     measureText: value => ({ width: String(value).length * 8 }),
     createLinearGradient: () => ({ addColorStop() {} }),
     createRadialGradient: () => ({ addColorStop() {} }),
-  }, { get(target, key) { return key in target ? target[key] : (...args) => canvasCalls.push({ name: key, args, fillStyle: target.fillStyle, strokeStyle: target.strokeStyle }); } });
+  }, { get(target, key) { return key in target ? target[key] : (...args) => canvasCalls.push({ name: key, args, fillStyle: target.fillStyle, strokeStyle: target.strokeStyle }); },
+    set(target, key, value) { if (key === 'shadowBlur') canvasCalls.push({ name: key, value }); target[key] = value; return true; } });
   const CanvasRenderingContext2D = function CanvasRenderingContext2D() {};
   Object.defineProperty(CanvasRenderingContext2D.prototype, 'shadowBlur', {
     configurable: true,
     get() { return this._shadowBlur || 0; },
     set(value) { this._shadowBlur = value; },
   });
+  const importHandlers = new Map();
+  const importInput = { value: '', files: [], clicks: 0, click() { this.clicks++; }, addEventListener(type, handler) { importHandlers.set(type, handler); } };
   const elements = {
     c: { clientWidth: width, clientHeight: height, getContext: () => canvasContext,
       addEventListener: (type, handler) => register(canvasEvents, type, handler),
       setPointerCapture() {}, getBoundingClientRect: () => ({ left: 0, top: 0 }), focus() {} },
     'game-status': { textContent: '' },
+    'save-import-file': importInput,
   };
   const clock = { now: 1000 };
   const document = {
@@ -69,18 +73,19 @@ function bootGame(storage, { storageGetterThrows = false, reducedMotion = false,
     fonts: { load: () => Promise.resolve() },
     createElement: () => ({ click() {}, getContext: () => canvasContext }),
   };
+  const location = { reloads: 0, reload() { this.reloads++; } };
   const sandbox = {
-    document, devicePixelRatio: 1, windowEvents, documentEvents, canvasEvents, mediaEvents, animationFrames, canvasCalls, accessibleActions, accessibleSettings, accessibleUpgrades, accessibleSkillBuys, accessibleSkills, clock, gameStatus: elements['game-status'],
+    document, devicePixelRatio: 1, windowEvents, documentEvents, canvasEvents, mediaEvents, animationFrames, canvasCalls, accessibleActions, accessibleSettings, accessibleUpgrades, accessibleSkillBuys, accessibleSkills, accessibleClasses, accessibleModules, clock, gameStatus: elements['game-status'], importInput, importHandlers,
     matchMedia: query => ({ matches: query.includes('prefers-reduced-motion') && reducedMotion,
       addEventListener: (type, handler) => mediaEvents.set(type, handler),
       addListener: handler => mediaEvents.set('change', handler) }),
     addEventListener: (type, handler) => register(windowEvents, type, handler), requestAnimationFrame: callback => animationFrames.push(callback),
-    CanvasRenderingContext2D,
+    CanvasRenderingContext2D, location,
     performance: { now: () => clock.now },
     setTimeout: () => 0,
   };
   Object.defineProperty(sandbox, 'localStorage', { get() { if (storageGetterThrows) throw new Error('storage denied'); return storage; } });
-  vm.runInNewContext(`${inlineScript}\nglobalThis.probe=()=>({state:st,meta:M,readOnly:saveReadOnly,reason:saveReason,recoveryRaw:()=>saveRecoveryRaw,start,startCampaign,campaignCommitMiniNode,campaignCommitBossNode,acknowledgeCampaignSettlement,retryCampaignSave,pause,end,hit,sv,advanceSkin,ok,skin:()=>skin,skinName:()=>SK[skin][0],skinColor:()=>SK[skin][1],geometry:()=>({S,W,H,dpr,x:px,ox,PW,canvasWidth:cv.width,canvasHeight:cv.height,py,hh,hw}),skillPosition:i=>({x:sx(i),y:H-32}),setTheme:index=>{t=index*25;lvp=index;th=index;st='play'},themeIndex:()=>th,setGalleryLevel:index=>{th=index;lp=index;st='lv'},levelData:()=>({themes:TH,lore:LORE,obstacles:OB,bosses:BN,hints:LEVEL_HINTS}),isLevelUnlocked:levelUnlocked,drawHazard:index=>{th=index;hzArt({x:100,y:80,w:38,h:30,v:150,theme:index})},drawOrbMark:index=>orbMark(100,80,index),drawShip:(x=100,y=100,k=1)=>ship(x,y,k,0),setAutoCannon:(level,flash=0)=>{M.u[11]=level;af=flash},setBlasterUnlocked:value=>{M.k[3]=value?1:0},setShipClass:value=>{M.cls=value},setSkin:value=>{skin=(value+SK.length)%SK.length},setHighContrast:value=>{M.s.hc=value?1:0},canvasCalls:()=>canvasCalls,clearCanvasCalls:()=>canvasCalls.length=0,prepareSpawnTheme:index=>{t=index*25;lvp=index;th=index;st='play';wv=0;bo=null},setDifficulty:index=>{gm=index},setMissionRotation:index=>{mh=index},runKind:()=>runKind,campaignNode:()=>campaignNode,campaignWorld:()=>campaignWorld,setShipX:value=>{px=tx=value},animationTime:()=>last,campaignTransition:()=>({remaining:campaignTransitionRemaining,duration:campaignTransitionDuration,boss:campaignTransitionBoss,completed:campaignTransitionCompleted,paused:campaignIntermissionPaused,simTime:t,score:sc,spawnTimer:tm,objects:objs.length,shipX:px,bannerTimer:bt,toastTimer:tt}),skipBounds:campaignSkipBounds,advanceIntermission:seconds=>{const target=Math.max(0,campaignTransitionRemaining-seconds);let now=last;while(st=='campaignIntermission'&&campaignTransitionRemaining>target){now+=Math.min(50,Math.max(1,(campaignTransitionRemaining-target)*1000));frame(now)}},campaignRun:()=>campaignRun,campaignConfiguration:()=>JSON.parse(JSON.stringify(CAMPAIGN_WORLDS)),campaignStageProfile:()=>campaignNodeConfig(campaignWorld,campaignNode),campaignProfile:(world,node)=>campaignNodeConfig(world,node),campaignStageDuration:campaignStageSeconds,validateCampaignWorlds,setCampaignDuration:(world,node,seconds)=>{const stage=CAMPAIGN_WORLDS[world].stages[node];stage.durationSeconds=seconds;if(stage.warningAt)stage.warningAt=Math.min(15,seconds-5)},prepareCampaignProfile:(world,node)=>{runKind='campaign';campaignWorld=world;campaignNode=node;st='play';th=world;objs=[];spd=180},campaignWallCenter, campaignRewards:()=>plainCampaignAttempt(),missionPlan:()=>[0,1,2].map(i=>MP[(mh+i*2)%6]),mp,waveState:()=>({active:wv,elapsed:wt,next:nw}),bossActive:()=>!!bo,bossSummary:()=>({big:bo?.big,label:bn,hp:bo?.hp}),forceCampaignBoss:()=>{bo={x:100};bossDown()},campaignOrbAtShip:()=>{tm=100;objs=[{k:'o',x:px,y:py,r:10,v:0}]},forceFatal:()=>{li=0;dth=1;end()},setRandom:value=>{rngCalls=0;rnd=()=>{rngCalls++;return value}},randomCalls:()=>rngCalls,spawnForLevel,objects:()=>objs,levelDuration:()=>LEVEL_SECONDS,campaignDuration,gameSpeed:()=>spd,stageIndex:currentLevelIndex,stageProgress:()=>({lvp,campaignClear}),stageRecords:()=>M.lv,prepareStage:(seconds,previous)=>{runKind='legacy';st='play';t=seconds;lvp=previous;th=currentLevelIndex();sc=180;rc=17;rk=2;rb=1;s0=80;tm=100;campaignClear=false},advanceGame:upd,canvas:cv,page:document,statusText:()=>gameStatus.textContent,reducedMotion:()=>rm,motion,deathSlowdown:()=>dth,drawFrame:(time=16)=>frame(Math.max(last+16,time)),scheduledFrames:()=>animationFrames.length,refreshAccessibleControls,keys:()=>[kl,kr,drag],steeringTarget:()=>tx,shopPage:()=>pg,levelPage:()=>lp,cooldowns:()=>cd,winReady:()=>winContinueReady,elapsed:()=>performance.now()-ot2,prepareWin:()=>{st='win';bc++;ot2=performance.now();refreshAccessibleControls()},continueAfterBoss,setNow:value=>{clock.now=value},windowEvents,documentEvents,canvasEvents,mediaEvents,accessibleActions,accessibleSettings,accessibleUpgrades,accessibleSkillBuys,accessibleSkills});function plainCampaignAttempt(){return campaignAttempt?JSON.parse(JSON.stringify(campaignAttempt)):null}`, sandbox);
+  vm.runInNewContext(`${inlineScript}\nglobalThis.probe=()=>({state:st,meta:M,readOnly:saveReadOnly,reason:saveReason,recoveryRaw:()=>saveRecoveryRaw,start,startCampaign,campaignCommitMiniNode,campaignCommitBossNode,acknowledgeCampaignSettlement,retryCampaignSave,pause,end,hit,sv,advanceSkin,importSave,importInput,importHandlers,location,ok,skin:()=>skin,skinName:()=>SK[skin][0],skinColor:()=>SK[skin][1],growthCatalog:()=>JSON.parse(JSON.stringify({UP,SKL,SKD,CLS,MODS,MUT})),devTools:typeof DEV==='undefined'?null:{pages:devPages,apply:devApply,summary:devSummary},geometry:()=>({S,W,H,dpr,x:px,ox,PW,canvasWidth:cv.width,canvasHeight:cv.height,py,hh,hw}),skillPosition:i=>({x:sx(i),y:H-32}),setTheme:index=>{t=index*25;lvp=index;th=index;st='play'},themeIndex:()=>th,setGalleryLevel:index=>{th=index;lp=index;st='lv'},levelData:()=>({themes:TH,lore:LORE,obstacles:OB,bosses:BN,hints:LEVEL_HINTS}),isLevelUnlocked:levelUnlocked,drawHazard:index=>{th=index;hzArt({x:100,y:80,w:38,h:30,v:150,theme:index})},drawOrbMark:index=>orbMark(100,80,index),drawBullet,drawUnlockPreview,unlockPreviewState,unlockPreviewStaticSteps,showUnlock,accessibleStatusText,weaponMuzzleLocal,weaponWorldMuzzle,fireAutoCannon,fireBlaster,weaponShots:()=>bu.map(b=>({...b})),weaponFlashMask:()=>bflSides,setBlasterTier:value=>{M.kt[3]=value},setBlasterActive:value=>{bl=value},setShipPose:(x,target,splash=0)=>{px=x;tx=target;spls=splash},clearWeaponShots:()=>{bu=[];bAlt=false;bflSides=0;bfl=af=0},drawShip:(x=100,y=100,k=1)=>ship(x,y,k,0),setAutoCannon:(level,flash=0)=>{M.u[11]=level;af=flash},setBlasterUnlocked:value=>{M.k[3]=value?1:0},setShipClass:value=>{M.cls=value},setSkin:value=>{skin=(value+SK.length)%SK.length},setHighContrast:value=>{M.s.hc=value?1:0},setLowEffects:value=>{M.s.l=value?1:0},setReducedMotion:value=>{rm=!!value},canvasCalls:()=>canvasCalls,clearCanvasCalls:()=>canvasCalls.length=0,prepareSpawnTheme:index=>{t=index*25;lvp=index;th=index;st='play';wv=0;bo=null},setDifficulty:index=>{gm=index},setMissionRotation:index=>{mh=index},runKind:()=>runKind,campaignNode:()=>campaignNode,campaignWorld:()=>campaignWorld,setShipX:value=>{px=tx=value},animationTime:()=>last,campaignTransition:()=>({remaining:campaignTransitionRemaining,duration:campaignTransitionDuration,boss:campaignTransitionBoss,completed:campaignTransitionCompleted,paused:campaignIntermissionPaused,simTime:t,score:sc,spawnTimer:tm,objects:objs.length,shipX:px,bannerTimer:bt,toastTimer:tt}),skipBounds:campaignSkipBounds,advanceIntermission:seconds=>{const target=Math.max(0,campaignTransitionRemaining-seconds);let now=last;while(st=='campaignIntermission'&&campaignTransitionRemaining>target){now+=Math.min(50,Math.max(1,(campaignTransitionRemaining-target)*1000));frame(now)}},campaignRun:()=>campaignRun,campaignConfiguration:()=>JSON.parse(JSON.stringify(CAMPAIGN_WORLDS)),campaignStageProfile:()=>campaignNodeConfig(campaignWorld,campaignNode),campaignProfile:(world,node)=>campaignNodeConfig(world,node),campaignStageDuration:campaignStageSeconds,campaignPaceSeconds:(world,node,elapsed)=>campaignPaceSeconds(campaignNodeConfig(world,node),elapsed),campaignSpawnInterval:(world,node,elapsed)=>campaignSpawnInterval(campaignNodeConfig(world,node),elapsed),validateCampaignWorlds,setCampaignDuration:(world,node,seconds)=>{const stage=CAMPAIGN_WORLDS[world].stages[node];stage.durationSeconds=seconds;if(stage.warningAt)stage.warningAt=Math.min(20,seconds-5)},prepareCampaignProfile:(world,node)=>{runKind='campaign';campaignWorld=world;campaignNode=node;campaignAttempt=emptyCampaignRewards();campaignCuePlayed=false;campaignBossDefeated=false;st='play';t=0;tm=0;sc=0;th=world;objs=[];spd=180},campaignWallCenter, campaignRewards:()=>plainCampaignAttempt(),missionPlan:()=>[0,1,2].map(i=>MP[(mh+i*2)%6]),mp,waveState:()=>({active:wv,elapsed:wt,next:nw}),bossActive:()=>!!bo,bossSummary:()=>({big:bo?.big,label:bn,hp:bo?.hp}),forceCampaignBoss:()=>{bo={x:100};bossDown()},campaignOrbAtShip:()=>{tm=100;objs=[{k:'o',x:px,y:py,r:10,v:0}]},forceFatal:()=>{li=0;dth=1;end()},setRandom:value=>{rngCalls=0;rnd=()=>{rngCalls++;return value}},randomCalls:()=>rngCalls,captureCampaignSpawns:()=>{const events=[],original=spawnForLevel;spawnForLevel=()=>{const before=objs.length;original();events.push(...objs.slice(before).map(o=>({k:o.k,s:o.s})));};return events},spawnForLevel,objects:()=>objs,levelDuration:()=>LEVEL_SECONDS,campaignDuration,gameSpeed:()=>spd,stageIndex:currentLevelIndex,stageProgress:()=>({lvp,campaignClear}),stageRecords:()=>M.lv,prepareStage:(seconds,previous)=>{runKind='legacy';st='play';t=seconds;lvp=previous;th=currentLevelIndex();sc=180;rc=17;rk=2;rb=1;s0=80;tm=100;campaignClear=false},advanceGame:upd,canvas:cv,page:document,statusText:()=>gameStatus.textContent,reducedMotion:()=>rm,motion,deathSlowdown:()=>dth,drawFrame:(time=16)=>frame(Math.max(last+16,time)),scheduledFrames:()=>animationFrames.length,refreshAccessibleControls,keys:()=>[kl,kr,drag],steeringTarget:()=>tx,shopPage:()=>pg,levelPage:()=>lp,cooldowns:()=>cd,winReady:()=>winContinueReady,elapsed:()=>performance.now()-ot2,prepareWin:()=>{st='win';bc++;ot2=performance.now();refreshAccessibleControls()},continueAfterBoss,setNow:value=>{clock.now=value},windowEvents,documentEvents,canvasEvents,mediaEvents,accessibleActions,accessibleSettings,accessibleUpgrades,accessibleSkillBuys,accessibleSkills,accessibleClasses,accessibleModules});function plainCampaignAttempt(){return campaignAttempt?JSON.parse(JSON.stringify(campaignAttempt)):null}`, sandbox);
   return sandbox.probe;
 }
 
@@ -136,6 +141,197 @@ test('Auto Cannon marker uses a flat, set-back muzzle across all hull classes', 
     assert.equal(calls.some(call => call.name === 'moveTo' && call.args[0] === 0 &&
       call.args[1] === nose + 2), false, 'hull ' + hull + ' no longer draws the pointed cannon tip');
   });
+});
+
+test('weapon visuals originate at rendered emitters while projectile collision paths stay unchanged', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  const noseOffsets = [-18, -20, -17, -19];
+  for (let hull = 0; hull < 4; hull++) {
+    game().clearWeaponShots();
+    game().setShipClass(hull);
+    game().setShipPose(240, 260, 0.2);
+    const geom = game().geometry();
+    const cannonPort = JSON.parse(JSON.stringify(game().weaponWorldMuzzle()));
+    const localCannonPort = JSON.parse(JSON.stringify(game().weaponMuzzleLocal()));
+    assert.equal(localCannonPort.y, noseOffsets[hull] + 5,
+      'Auto Cannon visual origin matches the independently drawn flat muzzle cap on hull ' + hull);
+    game().fireAutoCannon();
+    let shot = game().weaponShots()[0];
+    assert.equal(shot.x, geom.x);
+    assert.equal(shot.y, geom.py - 22, 'Auto Cannon collider keeps its original spawn point on hull ' + hull);
+    assert.equal(shot.launchX, cannonPort.x);
+    assert.equal(shot.launchY, cannonPort.y, 'a non-colliding visual launch trace joins the actual cannon outlet');
+
+    game().clearWeaponShots();
+    game().setBlasterTier(0);
+    const leftPort = JSON.parse(JSON.stringify(game().weaponWorldMuzzle(-1)));
+    game().fireBlaster();
+    shot = game().weaponShots()[0];
+    assert.equal(shot.side, -1);
+    assert.equal(shot.x, geom.x - 9);
+    assert.equal(shot.y, geom.py - 14, 'T1 Blaster collider keeps its original spawn point');
+    assert.equal(shot.launchX, leftPort.x);
+    assert.equal(shot.launchY, leftPort.y, 'T1 visual trace begins at the matching wing emitter');
+    game().clearWeaponShots();
+    game().setBlasterTier(1);
+    const twinPorts = [-1, 1].map(side => JSON.parse(JSON.stringify(game().weaponWorldMuzzle(side))));
+    game().fireBlaster();
+    const twinShots = JSON.parse(JSON.stringify(game().weaponShots()));
+    assert.deepEqual(twinShots.map(item => item.side), [-1, 1]);
+    assert.equal(twinShots.every((item, i) => item.x === geom.x + (i ? 9 : -9) && item.y === geom.py - 14), true,
+      'T2 keeps both original collision spawn paths');
+    assert.equal(twinShots.every((item, i) => item.launchX === twinPorts[i].x && item.launchY === twinPorts[i].y), true,
+      'both visual launch traces begin at their matching wing emitters');
+  }
+});
+
+test('unlock weapon previews follow the three firing phases and mirror T1/T2 behavior', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  const state = (id, time, tier) => JSON.parse(JSON.stringify(game().unlockPreviewState(id, time, tier)));
+  assert.deepEqual(state(4, .2, 0).sides, [0], 'Auto Cannon uses one center nose emitter');
+  assert.equal(state(4, .2, 0).phase, 'emitter');
+  assert.equal(state(4, .5, 0).phase, 'flash');
+  assert.equal(state(4, .9, 0).phase, 'projectile');
+  assert.deepEqual(state(3, .2, 0).sides, [-1], 'Blaster T1 begins at the left wing');
+  assert.deepEqual(state(3, 1.5, 0).sides, [1], 'Blaster T1 alternates to the right wing next cycle');
+  assert.deepEqual(state(3, .2, 1).sides, [-1, 1], 'upgraded Blaster preview matches simultaneous T2 fire');
+
+  game().setAutoCannon(1);
+  game().clearCanvasCalls();
+  game().drawUnlockPreview(4, 180, 280, .5);
+  let calls = game().canvasCalls();
+  assert.equal(calls.some(call => call.name === 'fillText' && call.args[0] === 'NOSE EMITTER'), true);
+  assert.equal(calls.some(call => call.name === 'fillText' && call.args[0] === '2  MUZZLE FLASH'), true);
+  assert.equal(calls.some(call => call.name === 'arc'), false, 'the preview shares the beveled, non-spherical firing flash');
+
+  game().setBlasterUnlocked(true);
+  game().setBlasterTier(0);
+  game().clearCanvasCalls();
+  game().drawUnlockPreview(3, 180, 280, 1.5);
+  calls = game().canvasCalls();
+  assert.equal(calls.some(call => call.name === 'fillText' && call.args[0] === 'WING EMITTERS'), true);
+  assert.equal(calls.some(call => call.name === 'fillText' && call.args[0] === '1  EMITTER READY'), true);
+  const before = JSON.stringify(game().meta);
+  game().drawUnlockPreview(3, 180, 280, 1.5);
+  assert.equal(JSON.stringify(game().meta), before, 'drawing never mutates save/gameplay state');
+});
+
+test('Reduced Motion unlock previews keep each T1 shot on one wing and explain alternation', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} }, { width: 360, height: 560, reducedMotion: true });
+  game().setBlasterUnlocked(true);
+  game().setBlasterTier(0);
+  game().clearCanvasCalls();
+  game().drawUnlockPreview(3, 180, 280, 8);
+  let calls = game().canvasCalls();
+  const labels = calls.filter(call => call.name === 'fillText').map(call => call.args[0]);
+  assert.equal(labels.includes('T1: NEXT SHOT SWITCHES SIDES'), true);
+  assert.deepEqual(labels.filter(label => ['LEFT EMITTER', 'LEFT FLASH', 'LEFT SHOT'].includes(label)),
+    ['LEFT EMITTER', 'LEFT FLASH', 'LEFT SHOT']);
+  assert.deepEqual(JSON.parse(JSON.stringify(game().unlockPreviewStaticSteps(3, 0).map(step => step.s))),
+    [[-1], [-1], [-1]], 'emitter, flash, and projectile depict one coherent left-side T1 shot');
+  assert.equal(labels.includes('RIGHT FLASH'), false);
+  assert.equal(calls.some(call => call.name === 'arc'), false, 'static Reduced Motion stages draw no moving rings or ball effects');
+  game().setBlasterTier(1);
+  game().clearCanvasCalls();
+  game().drawUnlockPreview(3, 180, 280, 8);
+  calls = game().canvasCalls();
+  assert.equal(calls.some(call => call.name === 'fillText' && call.args[0] === 'DUAL EMITTERS'), true);
+  assert.equal(calls.some(call => call.name === 'fillText' && call.args[0] === 'DUAL BEAM'), true);
+});
+
+test('unlock screen fits a narrow canvas, honors contrast/effect settings, and announces how to fire', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} }, { width: 360, height: 560 });
+  game().setAutoCannon(1);
+  game().showUnlock(4);
+  let status = game().accessibleStatusText();
+  assert.equal(status.includes('Always on · Blaster beams (gold) fire alongside it when active'), true,
+    'screen reader status includes how the weapon is activated');
+  game().setHighContrast(true);
+  game().drawFrame(16);
+  let calls = game().canvasCalls();
+  assert.equal(calls.some(call => call.name === 'fillText' && call.args[0] === 'NOSE EMITTER'), true);
+  assert.equal(calls.some(call => call.name === 'fillText' && call.args[0] === 'GOT IT'), true);
+  assert.equal(calls.some(call => call.name === 'stroke' && call.strokeStyle === '#fff'), true,
+    'High Contrast outlines the preview card, ship, and labels');
+  game().setLowEffects(true);
+  game().clearCanvasCalls();
+  game().drawUnlockPreview(4, 180, 280, .5);
+  calls = game().canvasCalls();
+  const blurs = calls.filter(call => call.name === 'shadowBlur').map(call => call.value);
+  assert.equal(blurs.length > 0 && blurs.every(value => value === 0), true,
+    'Low Effects removes unlock ship and firing glows');
+});
+
+test('a fresh weapon launch trail remains visible for its first 20 FPS frame', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  game().setShipPose(240, 240);
+  game().fireAutoCannon();
+  game().advanceGame(.05);
+  const shot = game().weaponShots()[0];
+  assert.equal(shot.launchT, .05, 'first-frame simulation does not consume the newly created trail lifetime');
+  assert.equal(shot.launchFresh, false, 'the trail begins aging after the first simulation frame');
+  game().clearCanvasCalls();
+  game().drawBullet(shot);
+  assert.equal(game().canvasCalls().some(call => call.name === 'moveTo' && call.args[0] === shot.launchX && call.args[1] === shot.launchY), true,
+    'the low-FPS first rendered frame still draws the emitter connection');
+});
+
+test('weapon projectiles and muzzle flashes use distinct beveled geometry and match Blaster firing sides', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} }, { reducedMotion: true });
+  game().setShipPose(240, 240);
+  game().drawBullet({ x: 100, y: 100, bs: 1, launchX: 100, launchY: 80, launchT: .04 });
+  let calls = game().canvasCalls();
+  assert.equal(calls.some(call => call.name === 'arc'), false, 'Auto Cannon no longer uses a spherical core');
+  assert.equal(calls.some(call => call.name === 'fill' && call.fillStyle === '#7df9ff'), true);
+  assert.equal(calls.some(call => call.name === 'stroke' && call.strokeStyle === '#e8ffff'), true);
+  assert.equal(calls.some(call => call.name === 'moveTo' && call.args[0] === 100 && call.args[1] === 80), true,
+    'a brief non-colliding straight trail visually connects the barrel to the unchanged projectile path');
+
+  game().clearCanvasCalls();
+  game().drawBullet({ x: 100, y: 100, bs: 0 });
+  calls = game().canvasCalls();
+  assert.equal(calls.some(call => call.name === 'arc'), false, 'Blaster no longer uses a ball or plain beam rectangle');
+  assert.equal(calls.some(call => call.name === 'fill' && call.fillStyle === '#ffb347'), true);
+  assert.equal(calls.some(call => call.name === 'stroke' && call.strokeStyle === '#fff3d1'), true);
+
+  game().clearWeaponShots();
+  game().setBlasterUnlocked(true);
+  game().setBlasterTier(0);
+  game().setBlasterActive(2);
+  game().fireBlaster();
+  assert.equal(game().weaponShots().length, 1, 'Blaster tier one emits one alternating shot');
+  assert.equal(game().weaponFlashMask(), 1, 'only the emitted left wing flashes');
+  game().setBlasterActive(0);
+  game().clearCanvasCalls();
+  game().drawShip(240, 240);
+  calls = game().canvasCalls();
+  assert.equal(calls.filter(call => call.name === 'fill' && call.fillStyle === '#ffb347').length, 2,
+    'the T1 flash illuminates only one wing in addition to the normal engine flame');
+  assert.equal(calls.some(call => call.name === 'arc'), false, 'neither weapon muzzle is a glowing ball');
+
+  game().fireBlaster();
+  assert.equal(game().weaponShots().length, 2);
+  assert.equal(game().weaponShots()[1].side, 1, 'T1 alternates to the other wing');
+  assert.equal(game().weaponFlashMask(), 2);
+  game().clearWeaponShots();
+  game().setBlasterTier(1);
+  game().fireBlaster();
+  assert.deepEqual(JSON.parse(JSON.stringify(game().weaponShots().map(shot => shot.side))), [-1, 1], 'the upgraded Blaster fires both wings');
+  assert.equal(game().weaponFlashMask(), 3, 'both T2 emitters flash together');
+  game().setHighContrast(true);
+  game().clearCanvasCalls();
+  game().drawBullet({ x: 100, y: 100, bs: 1 });
+  assert.equal(game().canvasCalls().some(call => call.name === 'stroke' && call.strokeStyle === '#fff'), true,
+    'High Contrast keeps a white outer projectile edge');
+  game().setHighContrast(false);
+  game().setLowEffects(true);
+  game().clearCanvasCalls();
+  game().drawBullet({ x: 100, y: 100, bs: 0 });
+  calls = game().canvasCalls();
+  const blurValues = calls.filter(call => call.name === 'shadowBlur').map(call => call.value);
+  assert.equal(blurValues.length > 0 && blurValues.every(value => value === 0), true,
+    'Low Effects removes projectile glow without removing its beveled silhouette');
+  assert.equal(calls.some(call => call.name === 'fill' && call.fillStyle === '#ffb347'), true);
 });
 
 test('inline game script parses without syntax errors', () => {
@@ -216,7 +412,7 @@ test('campaign configuration validates twelve themed worlds, five distinct stage
     assert.equal(world.stages.length, 5);
     assert.deepEqual(JSON.parse(JSON.stringify(world.stages.map(stage => stage.role))), ['scan','practice','variation','combine','foreshadow']);
     assert.deepEqual(JSON.parse(JSON.stringify(world.stages.map(stage => stage.event))), ['readable-lanes','single-pattern','shifted-pattern','mixed-patterns','boss-preview']);
-    assert.equal(world.stages.every(stage => stage.durationSeconds === 20 && stage.clearCondition === 'survive-duration'), true);
+    assert.equal(world.stages.every(stage => stage.durationSeconds === 25 && stage.clearCondition === 'survive-duration'), true);
     assert.equal(world.stages.every(stage => stage.safeGap >= 80 && stage.safeGap <= 140), true);
     assert.equal(world.boss.attackPattern, worldIndex % 3);
     assert.equal(world.boss.orbDamage, 1);
@@ -732,7 +928,7 @@ test('Campaign Big Boss defeats advance and complete the active Boss mission', (
   const slot = game().missionPlan().findIndex(mission => mission[2] === 'b');
   assert.notEqual(slot, -1);
   game().startCampaign();
-  for (let node = 0; node < 5; node++) { game().advanceGame(20); advanceIntermission(game); }
+  for (let node = 0; node < 5; node++) { game().advanceGame(game().campaignStageDuration()); advanceIntermission(game); }
   game().advanceGame(0.016);
   game().forceCampaignBoss();
   game().advanceGame(0);
@@ -751,8 +947,9 @@ test('World 1 campaign advances through five timed mini stages into its separate
   assert.match(game().statusText(), /mini 1 of 5/i);
   for (let node = 0; node < 5; node++) {
     assert.equal(game().campaignNode(), node);
-    game().advanceGame(19.99);
-    assert.equal(game().campaignNode(), node, 'a node must not clear before its 20-second boundary');
+    const duration = game().campaignStageDuration();
+    game().advanceGame(duration - 0.01);
+    assert.equal(game().campaignNode(), node, 'a node must not clear before its 25-second boundary');
     game().advanceGame(0.01);
     assert.equal(game().state, 'campaignIntermission');
     assert.equal(game().campaignNode(), node + 1);
@@ -772,7 +969,7 @@ test('campaign mini intermissions freeze play, retain ship position, pause safel
   game().startCampaign();
   assert.equal(game().campaignTransition().bannerTimer, 2.5, 'the normal initial campaign entry keeps its banner');
   game().setShipX(300);
-  game().advanceGame(20);
+  game().advanceGame(game().campaignStageDuration());
   assert.equal(game().state, 'campaignIntermission');
   const enteredTransition = plain(game().campaignTransition());
   assert.ok(enteredTransition.score >= 100, 'the completed mini keeps its committed score');
@@ -820,7 +1017,7 @@ test('campaign mini intermissions freeze play, retain ship position, pause safel
 test('the intermission card tap target skips the countdown but remains inactive outside the card state', () => {
   const game = bootGame({ getItem: () => null, setItem() {} });
   game().startCampaign();
-  game().advanceGame(20);
+  game().advanceGame(game().campaignStageDuration());
   assert.equal(game().state, 'campaignIntermission');
   const { S, W, H } = game().geometry();
   const bounds = game().skipBounds();
@@ -849,7 +1046,7 @@ test('the intermission card tap target skips the countdown but remains inactive 
 test('accessible skip action starts the next campaign mini stage immediately', () => {
   const game = bootGame({ getItem: () => null, setItem() {} });
   game().startCampaign();
-  game().advanceGame(20);
+  game().advanceGame(game().campaignStageDuration());
   const skip = game().accessibleActions.find(button => button.dataset.action === 'skip-intermission');
   assert.equal(skip.disabled, false);
   skip.click();
@@ -862,7 +1059,7 @@ test('accessible skip action starts the next campaign mini stage immediately', (
 test('canvas resume click preserves a paused campaign intermission and its remaining time', () => {
   const game = bootGame({ getItem: () => null, setItem() {} });
   game().startCampaign();
-  game().advanceGame(20);
+  game().advanceGame(game().campaignStageDuration());
   assert.equal(game().state, 'campaignIntermission');
   game().pause();
   const remaining = game().campaignTransition().remaining;
@@ -877,7 +1074,7 @@ test('Enter and Space resume a paused campaign intermission without skipping its
   for (const key of ['Enter', ' ']) {
     const game = bootGame({ getItem: () => null, setItem() {} });
     game().startCampaign();
-    game().advanceGame(20);
+    game().advanceGame(game().campaignStageDuration());
     game().pause();
     const remaining = game().campaignTransition().remaining;
     game().windowEvents.get('keydown')({ key, target: game().canvas, preventDefault() {}, repeat: false });
@@ -890,8 +1087,8 @@ test('Enter and Space resume a paused campaign intermission without skipping its
 test('the fifth mini uses a distinct 8 second Boss preview, including under Reduced Motion', () => {
   const game = bootGame({ getItem: () => null, setItem() {} }, { reducedMotion: true });
   game().startCampaign();
-  for (let node = 0; node < 4; node++) { game().advanceGame(20); advanceIntermission(game); }
-  game().advanceGame(20);
+  for (let node = 0; node < 4; node++) { game().advanceGame(game().campaignStageDuration()); advanceIntermission(game); }
+  game().advanceGame(game().campaignStageDuration());
   assert.equal(game().state, 'campaignIntermission');
   assert.equal(game().campaignNode(), 5);
   assert.equal(game().campaignTransition().duration, 8);
@@ -911,18 +1108,79 @@ test('the fifth mini uses a distinct 8 second Boss preview, including under Redu
   assert.equal(game().bossActive(), true);
 });
 
-test('campaign stage runtime follows centrally configured 15- and 25-second durations', () => {
-  for (const duration of [15, 25]) {
+test('campaign stage runtime follows centrally configured 15-, 20-, and 25-second durations', () => {
+  for (const duration of [15, 20, 25]) {
     const values = new Map();
     const game = bootGame({ getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)) });
     game().setCampaignDuration(0, 0, duration);
     game().setCampaignDuration(0, 4, duration);
-    assert.equal(game().campaignProfile(0, 4).warningAt, Math.min(15, duration - 5));
+    assert.equal(game().campaignProfile(0, 4).warningAt, Math.min(20, duration - 5));
     game().startCampaign();
     game().advanceGame(duration - 0.01);
     assert.equal(game().campaignNode(), 0, `stage must hold at ${duration - 0.01}s`);
     game().advanceGame(0.01);
     assert.equal(game().campaignNode(), 1, `stage must clear at ${duration}s`);
+  }
+});
+
+test('all 60 Campaign mini profiles stretch to 25 seconds without increasing the old 20-second pressure curve', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  for (let world = 0; world < 12; world++) {
+    for (let node = 0; node < 5; node++) {
+      for (const progress of [0, 0.25, 0.5, 0.75, 1, 1.25]) {
+        const elapsed20 = 20 * progress;
+        game().setCampaignDuration(world, node, 20);
+        const oldPace = game().campaignPaceSeconds(world, node, elapsed20);
+        const oldInterval = game().campaignSpawnInterval(world, node, elapsed20);
+        game().setCampaignDuration(world, node, 25);
+        const newPace = game().campaignPaceSeconds(world, node, 25 * progress);
+        const newInterval = game().campaignSpawnInterval(world, node, 25 * progress);
+        assert.equal(newPace, oldPace, `world ${world + 1}, mini ${node + 1}, progress ${progress}: pace stays normalized`);
+        assert.equal(newInterval, oldInterval, `world ${world + 1}, mini ${node + 1}, progress ${progress}: spawn pressure stays normalized`);
+      }
+    }
+  }
+  for (const duration of [15, 20, 25]) {
+    const runtime = bootGame({ getItem: () => null, setItem() {} });
+    runtime().setCampaignDuration(0, 0, duration);
+    runtime().startCampaign();
+    runtime().advanceGame(duration * 0.5);
+    assert.equal(runtime().gameSpeed(), 184, `${duration}s mini reaches the same midpoint hazard speed`);
+    assert.equal(runtime().campaignTransition().spawnTimer, runtime().campaignSpawnInterval(0, 0, duration * 0.5), `${duration}s mini uses its normalized spawn interval`);
+  }
+
+  const boss = bootGame({ getItem: () => null, setItem() {} });
+  boss().prepareCampaignProfile(0, 5);
+  boss().advanceGame(10);
+  assert.equal(boss().campaignPaceSeconds(0, 5, 27), 27, 'Boss time stays on its original elapsed clock');
+  assert.equal(boss().gameSpeed(), 200, 'Boss travel speed still uses its original 10-second elapsed value');
+
+  const legacy = bootGame({ getItem: () => null, setItem() {} });
+  legacy().prepareStage(0, 0);
+  legacy().advanceGame(10);
+  assert.equal(legacy().gameSpeed(), 182, 'Endless/legacy speed still uses the original 10-second elapsed value');
+});
+
+test('a deterministic 60 FPS stage adds duration-based score and spawn opportunities without raising peak pressure', () => {
+  const simulate = (node, duration) => {
+    const game = bootGame({ getItem: () => null, setItem() {} });
+    game().setCampaignDuration(0, node, duration);
+    game().prepareCampaignProfile(0, node);
+    game().setRandom(0);
+    const spawned = game().captureCampaignSpawns();
+    for (let frame = 0; frame < duration * 60 - 1; frame++) game().advanceGame(1 / 60);
+    assert.equal(game().campaignNode(), node, `${duration}s simulation stays inside mini ${node + 1}`);
+    assert.equal(spawned.every(event => event.k === 'p'), true, 'the fixed seed holds spawn type constant for this controlled exposure sample');
+    return { attempts: spawned.length, score: game().campaignTransition().score, elapsed: game().campaignTransition().simTime };
+  };
+
+  for (let node = 0; node < 5; node++) {
+    const oldStage = simulate(node, 20);
+    const longerStage = simulate(node, 25);
+    assert.ok(Math.abs(longerStage.elapsed - (25 - 1 / 60)) < 1e-9, '25-second sample ends one simulation frame before clear');
+    assert.equal(Math.round(longerStage.score - oldStage.score), 25, 'the longer window adds the expected 25 base score per mini');
+    const attemptRatio = longerStage.attempts / oldStage.attempts;
+    assert.ok(attemptRatio > 1.15 && attemptRatio < 1.35, `${attemptRatio} spawn opportunities reflect the longer exposure window, with the same interval ceiling`);
   }
 });
 
@@ -962,6 +1220,95 @@ test('T2 duration candidates route all five mini roles across twelve worlds into
     assert.equal(game().acknowledgeCampaignSettlement(), true);
     assert.equal(game().state, 'campaignComplete');
   }
+});
+
+function finishWorldOneBoss(game) {
+  game().startCampaign();
+  for (let node = 0; node < 5; node++) { game().advanceGame(game().campaignStageDuration()); advanceIntermission(game); }
+  game().advanceGame(0.016);
+  assert.equal(game().bossActive(), true);
+  game().forceCampaignBoss();
+  game().advanceGame(0);
+  assert.equal(game().state, 'campaignSettlement');
+  game().setNow(1701);
+  game().drawFrame(16);
+}
+
+test('quitting a cleared world saves its receipt, unlocks the next world, and permits replay from the map', () => {
+  const values = new Map();
+  const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)) };
+  const game = bootGame(storage);
+  finishWorldOneBoss(game);
+  const creditsAfterFirstClear = game().meta.c;
+  game().accessibleActions.find(button => button.dataset.action === 'menu').click();
+  assert.equal(game().state, 'menu');
+  assert.equal(game().meta.campaign.pendingSettlement, null);
+  assert.equal(game().meta.campaign.worlds[0].boss, 1);
+  assert.equal(game().meta.campaign.checkpoint.world, 1);
+
+  const reloaded = bootGame(storage);
+  reloaded().startCampaign();
+  assert.equal(reloaded().state, 'play', 'resume should proceed directly to the saved next-world checkpoint');
+  assert.equal(reloaded().campaignWorld(), 1);
+
+  const replay = bootGame(storage);
+  replay().accessibleActions.find(button => button.dataset.action === 'campaign-map').click();
+  replay().accessibleActions.find(button => button.dataset.action === 'map-prev').click();
+  assert.equal(replay().accessibleActions.find(button => button.dataset.action === 'map-play').textContent.startsWith('Play selected world 1'), true);
+  replay().accessibleActions.find(button => button.dataset.action === 'map-play').click();
+  assert.equal(replay().campaignWorld(), 0);
+  assert.equal(replay().meta.campaign.worlds[0].boss, 1, 'replaying a cleared world keeps its unlock flag');
+  assert.equal(replay().meta.c, creditsAfterFirstClear, 'replaying does not repeat first-clear rewards');
+});
+
+test('failed settlement quit preserves intent through retry and never routes into the next world early', () => {
+  const values = new Map();
+  let failWrites = false;
+  const storage = { getItem: key => values.get(key) ?? null, setItem(key, value) { if (failWrites) throw new Error('simulated storage failure'); values.set(key, String(value)); } };
+  const game = bootGame(storage);
+  finishWorldOneBoss(game);
+  const committed = [...values.values()].map(raw => JSON.parse(raw).data).find(data => data?.campaign?.pendingSettlement);
+  assert.ok(committed?.campaign?.pendingSettlement, 'the committed Boss receipt is present in DEV storage');
+  failWrites = true;
+  game().accessibleActions.find(button => button.dataset.action === 'menu').click();
+  assert.equal(game().state, 'campaignSaveError');
+  assert.deepEqual(JSON.parse(JSON.stringify(game().meta.campaign.pendingSettlement)), committed.campaign.pendingSettlement);
+  const durable = [...values.values()].map(raw => JSON.parse(raw).data).find(data => data?.campaign?.pendingSettlement);
+  assert.equal(durable.campaign.checkpoint.world, 1, 'durable next-world checkpoint stays intact');
+  game().accessibleActions.find(button => button.dataset.action === 'retry-save').click();
+  assert.equal(game().state, 'campaignSaveError', 'a repeated failed write keeps the retry screen and intent');
+  game().windowEvents.get('keydown')({ key: 'q', repeat: false, defaultPrevented: false, preventDefault() {} });
+  assert.equal(game().state, 'campaignSettlement', 'Q returns to the durable receipt without applying the failed acknowledgment');
+  assert.ok(game().meta.campaign.pendingSettlement);
+  game().accessibleActions.find(button => button.dataset.action === 'menu').click();
+  assert.equal(game().state, 'campaignSaveError');
+  failWrites = false;
+  game().accessibleActions.find(button => button.dataset.action === 'retry-save').click();
+  assert.equal(game().state, 'menu', 'retry honors the original quit-to-menu intent');
+  assert.equal(game().meta.campaign.pendingSettlement, null);
+  assert.equal(game().meta.campaign.checkpoint.world, 1);
+});
+
+test('quitting the final settlement preserves completion without creating another checkpoint', () => {
+  const values = new Map();
+  const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)) };
+  const game = bootGame(storage);
+  game().startCampaign();
+  for (let world = 0; world < 12; world++) {
+    for (let node = 0; node < 5; node++) { game().advanceGame(game().campaignStageDuration()); advanceIntermission(game); }
+    game().advanceGame(0.016);
+    game().forceCampaignBoss();
+    game().advanceGame(0);
+    if (world < 11) { assert.equal(game().acknowledgeCampaignSettlement(), true); }
+  }
+  assert.equal(game().state, 'campaignSettlement');
+  game().setNow(1701);
+  game().drawFrame(16);
+  game().accessibleActions.find(button => button.dataset.action === 'menu').click();
+  assert.equal(game().state, 'menu');
+  assert.equal(game().meta.campaign.completed, 1);
+  assert.equal(game().meta.campaign.checkpoint, null);
+  assert.equal(game().meta.campaign.pendingSettlement, null);
 });
 
 test('Campaign runtime routes all 72 nodes through twelve Boss settlements and the final clear', () => {
@@ -1005,7 +1352,7 @@ test('Normal World 1 Big Boss is beatable with collected orbs and no purchased u
   const values = new Map();
   const game = bootGame({ getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)) });
   game().startCampaign();
-  for (let node = 0; node < 5; node++) { game().advanceGame(20); advanceIntermission(game); }
+  for (let node = 0; node < 5; node++) { game().advanceGame(game().campaignStageDuration()); advanceIntermission(game); }
   game().advanceGame(0.016);
   assert.equal(game().bossActive(), true);
   assert.equal(game().meta.u.every(level => level === 0), true);
@@ -1038,7 +1385,7 @@ test('campaign completion preserves legacy level records and run counters', () =
   const values = new Map([[api.META_KEY, JSON.stringify(initial)]]);
   const game = bootGame({ getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)) });
   game().startCampaign();
-  for (let node = 0; node < 5; node++) { game().advanceGame(20); advanceIntermission(game); }
+  for (let node = 0; node < 5; node++) { game().advanceGame(game().campaignStageDuration()); advanceIntermission(game); }
   game().advanceGame(0.016);
   game().forceCampaignBoss();
   game().advanceGame(0);
@@ -1052,9 +1399,9 @@ test('Reduced Motion preserves the final mini-stage Boss warning cue', () => {
   const values = new Map();
   const game = bootGame({ getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)) }, { reducedMotion: true });
   game().startCampaign();
-  for (let node = 0; node < 4; node++) { game().advanceGame(20); advanceIntermission(game); }
+  for (let node = 0; node < 4; node++) { game().advanceGame(game().campaignStageDuration()); advanceIntermission(game); }
   assert.equal(game().campaignNode(), 4);
-  game().advanceGame(14.99);
+  game().advanceGame(19.99);
   assert.doesNotMatch(game().statusText(), /Boss signal detected/);
   game().advanceGame(0.01);
   assert.match(game().statusText(), /Boss signal detected/);
@@ -1073,7 +1420,7 @@ test('campaign Boss victory is saved as a receipt; reload and acknowledgment gat
   const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)) };
   const game = bootGame(storage);
   game().startCampaign();
-  for (let node = 0; node < 5; node++) { game().advanceGame(20); advanceIntermission(game); }
+  for (let node = 0; node < 5; node++) { game().advanceGame(game().campaignStageDuration()); advanceIntermission(game); }
   game().advanceGame(0.016);
   game().forceCampaignBoss();
   game().advanceGame(0);
@@ -1098,7 +1445,7 @@ test('fatal outcome in the Boss defeat frame prevents campaign victory settlemen
   const values = new Map();
   const game = bootGame({ getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)) });
   game().startCampaign();
-  for (let node = 0; node < 5; node++) { game().advanceGame(20); advanceIntermission(game); }
+  for (let node = 0; node < 5; node++) { game().advanceGame(game().campaignStageDuration()); advanceIntermission(game); }
   game().advanceGame(0.016);
   game().forceCampaignBoss();
   game().forceFatal();
@@ -1118,7 +1465,7 @@ test('failed Boss settlement write freezes victory until Retry Save commits the 
   } };
   const game = bootGame(storage);
   game().startCampaign();
-  for (let node = 0; node < 5; node++) { game().advanceGame(20); advanceIntermission(game); }
+  for (let node = 0; node < 5; node++) { game().advanceGame(game().campaignStageDuration()); advanceIntermission(game); }
   game().advanceGame(0.016);
   const durableBeforeBoss = plain(api.decodeMeta(values.get(api.META_KEY)).meta);
   failMainWrite = true;
@@ -1151,7 +1498,7 @@ test('failed mini clear write freezes the node and Retry Save commits before sim
   const game = bootGame(storage);
   game().startCampaign();
   failMainWrite = true;
-  game().advanceGame(20);
+  game().advanceGame(game().campaignStageDuration());
   assert.equal(game().state, 'campaignSaveError');
   assert.equal(game().meta.campaign.checkpoint.node, 0);
   assert.equal(game().meta.campaign.worlds[0].mini, 0);
@@ -1260,12 +1607,103 @@ test('future save versions are preserved rather than overwritten', () => {
   assert.equal(result.recoveryRaw, raw);
 });
 
-test('export preserves invalid raw data and emits versioned JSON for a valid in-memory save', () => {
+test('export preserves invalid raw data and emits a complete versioned player save package', () => {
   const raw = '{preserve exactly';
   assert.equal(api.exportPayload(raw, plain(api.emptyMeta())), raw);
-  const current = JSON.parse(api.exportPayload(null, { c: 8 }));
-  assert.equal(current.version, api.META_VERSION);
-  assert.equal(current.data.c, 8);
+  const records = { best: 900, dailyDate: '2026-10-12', dailyBest: 120, skin: 4 };
+  const current = JSON.parse(api.exportPayload(null, { c: 8 }, records));
+  assert.equal(current.format, 'neon-drift-save');
+  assert.equal(current.exportVersion, 1);
+  assert.equal(current.save.version, api.META_VERSION);
+  assert.equal(current.save.data.c, 8);
+  assert.deepEqual(current.records, records);
+  assert.deepEqual(plain(api.validateSaveImport(JSON.stringify(current))), {
+    save: { ...plain(api.emptyMeta()), c: 8 }, records, sourceVersion: api.META_VERSION,
+  });
+  assert.equal(plain(api.validateSaveImport(JSON.stringify({ version: 3, data: { c: 9 } }))).records, null,
+    'existing metadata-only export files remain importable');
+});
+
+test('save import backs up affected values before replacing profile, high scores, skin, and daily score', () => {
+  const prefix = api.META_KEY.slice(0, -'meta'.length);
+  const oldMeta = JSON.stringify({ version: api.META_VERSION, data: { c: 14 } });
+  const values = new Map([[api.META_KEY, oldMeta], [prefix + 'best', '77'], [prefix + 'skin', '2'], [prefix + 'daily-2026-10-12', '33']]);
+  const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)), removeItem: key => values.delete(key) };
+  const payload = api.exportPayload(null, { c: 420, xp: 80 }, { best: 900, dailyDate: '2026-10-12', dailyBest: 120, skin: 4 });
+  const result = api.applySaveImport(storage, payload);
+  assert.equal(JSON.parse(values.get(api.META_KEY)).data.c, 420);
+  assert.equal(values.get(prefix + 'best'), '900');
+  assert.equal(values.get(prefix + 'skin'), '4');
+  assert.equal(values.get(prefix + 'daily-2026-10-12'), '120');
+  assert.equal(result.backupKey, prefix + 'pre-import-backup');
+  const backup = JSON.parse(values.get(result.backupKey));
+  assert.equal(backup.format, 'neon-drift-pre-import');
+  assert.deepEqual(backup.values, [
+    { key: api.META_KEY, value: oldMeta }, { key: prefix + 'best', value: '77' },
+    { key: prefix + 'skin', value: '2' }, { key: prefix + 'daily-2026-10-12', value: '33' },
+  ]);
+});
+
+test('legacy v1/v2 imports retain exact source bytes and invalid imports do not touch the current save', () => {
+  const prefix = api.META_KEY.slice(0, -'meta'.length);
+  const legacyRaw = JSON.stringify({ version: 2, data: { c: 61, u: [1] } });
+  const values = new Map([[api.META_KEY, 'current-save']]);
+  const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)), removeItem: key => values.delete(key) };
+  api.applySaveImport(storage, legacyRaw);
+  assert.equal(values.get(prefix + 'import-source-backup'), legacyRaw);
+  assert.equal(JSON.parse(values.get(api.META_KEY)).data.c, 61);
+
+  const before = new Map(values);
+  for (const invalid of ['{bad json', JSON.stringify({ version: 99, data: { c: 5 } }), JSON.stringify({ version: 3, data: { c: -1 } })]) {
+    assert.throws(() => api.applySaveImport(storage, invalid));
+    assert.deepEqual(values, before);
+  }
+});
+
+test('save import rolls back all affected values when a later profile write fails', () => {
+  const prefix = api.META_KEY.slice(0, -'meta'.length);
+  const oldMeta = JSON.stringify({ version: api.META_VERSION, data: { c: 8 } });
+  const values = new Map([[api.META_KEY, oldMeta], [prefix + 'best', '12'], [prefix + 'skin', '1']]);
+  let failOnce = true;
+  const storage = { getItem: key => values.get(key) ?? null, removeItem: key => values.delete(key), setItem(key, value) {
+    if (key === prefix + 'skin' && String(value) === '4' && failOnce) { failOnce = false; throw Error('quota'); }
+    values.set(key, String(value));
+  } };
+  const payload = api.exportPayload(null, { c: 99 }, { best: 900, dailyDate: '2026-10-12', dailyBest: 120, skin: 4 });
+  assert.throws(() => api.applySaveImport(storage, payload), /quota/);
+  assert.equal(values.get(api.META_KEY), oldMeta);
+  assert.equal(values.get(prefix + 'best'), '12');
+  assert.equal(values.get(prefix + 'skin'), '1');
+  assert.equal(values.has(prefix + 'daily-2026-10-12'), false);
+  assert.equal(JSON.parse(values.get(prefix + 'pre-import-backup')).format, 'neon-drift-pre-import');
+});
+
+test('accessible Settings exposes save import and opens the file picker only on that screen', () => {
+  const game = bootGame({ getItem: () => null, setItem() {} });
+  const action = name => game().accessibleActions.find(button => button.dataset.action === name);
+  assert.equal(action('import').disabled, true);
+  action('settings').click();
+  assert.equal(action('import').disabled, false);
+  assert.equal(game().importSave(), true);
+  assert.equal(game().importInput.clicks, 1);
+  action('menu').click();
+  assert.equal(action('import').disabled, true);
+});
+
+test('a valid Settings file import persists the full save package and reloads the game', async () => {
+  const prefix = api.META_KEY.slice(0, -'meta'.length);
+  const values = new Map([[api.META_KEY, JSON.stringify({ version: api.META_VERSION, data: { c: 10 } })]]);
+  const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)), removeItem: key => values.delete(key) };
+  const game = bootGame(storage);
+  game().accessibleActions.find(button => button.dataset.action === 'settings').click();
+  const packageText = api.exportPayload(null, { c: 730, xp: 140 }, { best: 1900, dailyDate: '2026-10-12', dailyBest: 240, skin: 3 });
+  game().importInput.files = [{ size: packageText.length, text: async () => packageText }];
+  await game().importHandlers.get('change')();
+  assert.equal(JSON.parse(values.get(api.META_KEY)).data.c, 730);
+  assert.equal(values.get(prefix + 'best'), '1900');
+  assert.equal(values.get(prefix + 'skin'), '3');
+  assert.equal(values.get(prefix + 'daily-2026-10-12'), '240');
+  assert.equal(game().location.reloads, 1);
 });
 
 test('storage read and write failures fall back without throwing', () => {
@@ -1482,6 +1920,63 @@ test('accessible DOM controls can start a run, reach settings, and change prefer
   assert.match(game().statusText(), /Colorblind colors on/);
   action('menu').click();
   assert.equal(game().state, 'menu');
+});
+
+test('DEV diagnostics stay separate from formal and save reset requires a fresh two-tap confirmation', () => {
+  const devSource = fs.readFileSync(path.join(__dirname, '..', 'neon-drift-dev.html'), 'utf8');
+  const formalSource = fs.readFileSync(path.join(__dirname, '..', 'neon-drift.html'), 'utf8');
+  assert.match(devSource, /const META_KEY='neon-drift-dev-meta'/);
+  assert.match(formalSource, /const META_KEY='neon-drift-meta'/);
+  assert.match(devSource, /const DEV=true/);
+  assert.doesNotMatch(formalSource, /const DEV=true|function devPages\(/);
+
+  const values = new Map();
+  const game = bootGame({ getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)) });
+  const tools = game().devTools;
+  assert.equal(!!tools, sourceName.includes('-dev'), 'diagnostic controls exist only in the DEV source');
+  if (!tools) return;
+
+  game().meta.c = 9876;
+  game().sv();
+  const reset = tools.pages()[4].r.find(row => row.l === 'RESET SAVE');
+  assert.ok(reset);
+  tools.apply(reset, 1);
+  assert.equal(game().meta.c, 9876, 'first confirmation tap must preserve the test profile');
+  game().setNow(5000);
+  tools.apply(reset, 1);
+  assert.equal(game().meta.c, 9876, 'an expired confirmation starts over without resetting');
+  tools.apply(reset, 1);
+  assert.equal(game().meta.c, 0, 'a second tap inside the new confirmation window resets the DEV profile');
+  assert.equal(game().meta.xp, 0);
+});
+
+test('growth descriptions are explicit and match accessible shop and hangar labels', () => {
+  const game = bootGame(new Map());
+  const catalog = game().growthCatalog();
+  assert.equal(catalog.UP.length, 12);
+  assert.ok(catalog.UP.every((entry) => entry[2].length > 12), 'every upgrade explains its effect');
+  assert.ok(catalog.CLS.every((entry) => entry[1].length > 8), 'every ship class explains its role');
+  assert.ok(catalog.MODS.every((entry) => entry[1].length > 8), 'every module explains its effect');
+  assert.match(catalog.UP[3][2], /\+80.*\+6/);
+  assert.match(catalog.UP[8][2], /\+1 damage/);
+  assert.match(catalog.UP[10][2], /\+2 seconds/);
+  assert.match(catalog.CLS[2][1], /Blaster.*25% faster/);
+  assert.match(catalog.MODS[2][1], /0\.7s/);
+
+  const action = name => game().accessibleActions.find(button => button.dataset.action === name);
+  action('shop').click();
+  game().refreshAccessibleControls();
+  assert.ok(game().accessibleUpgrades[0].attributes['aria-label'].includes(catalog.UP[0][2]));
+  for (let i = 0; i < 3; i++) action('shop-next').click();
+  assert.ok(game().accessibleSkillBuys[0].attributes['aria-label'].includes(catalog.SKL[0][2]));
+
+  action('menu').click();
+  action('hangar').click();
+  game().refreshAccessibleControls();
+  assert.ok(game().accessibleClasses[2].textContent.includes(catalog.CLS[2][1]));
+  action('hangar-page').click();
+  game().refreshAccessibleControls();
+  assert.ok(game().accessibleModules[2].textContent.includes(catalog.MODS[2][1]));
 });
 
 test('accessible controls complete shop purchases, skill activation, and level navigation', () => {
