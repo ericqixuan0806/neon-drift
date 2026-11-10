@@ -10,7 +10,7 @@ const source = fs.readFileSync(path.join(__dirname, '..', sourceName), 'utf8');
 const core = source.split('/* save-state-core:start */')[1]?.split('/* save-state-core:end */')[0];
 assert.ok(core, 'save-state-core markers must remain in the game source');
 const sandbox = {};
-vm.runInNewContext(`${core}\nglobalThis.api={META_KEY,META_BACKUP_KEY,META_VERSION,emptyCampaign,emptyMeta,validateCampaign,campaignNextSeed,campaignStart,campaignCommitMini,campaignCommitBoss,campaignAcknowledgeSettlement,decodeMeta,readMeta,writeMeta,validateSaveImport,applySaveImport,exportPayload};`, sandbox);
+vm.runInNewContext(`${core}\nglobalThis.api={META_KEY,META_BACKUP_KEY,META_VERSION,emptyCampaign,emptyMeta,validateCampaign,campaignNextSeed,campaignStart,campaignCommitMini,campaignCommitBoss,campaignAcknowledgeSettlement,decodeMeta,readMeta,writeMeta,validateLeaderboard,insertLeaderboardRecord,validateSaveImport,applySaveImport,exportPayload};`, sandbox);
 const api = sandbox.api;
 const plain = value => JSON.parse(JSON.stringify(value));
 const hardcoreRewardComponents = (date, miniCredits = 0, bossCredits = 0) => Array.from({ length: 6 }, (_, node) => ({ node, rewards: {
@@ -20,6 +20,16 @@ const hardcoreRewardComponents = (date, miniCredits = 0, bossCredits = 0) => Arr
 const inlineScript = [...source.matchAll(/<script>([\s\S]*?)<\/script>/g)][0]?.[1];
 
 function advanceIntermission(game) { const remaining = game().campaignTransition().remaining; if (remaining > 0) game().advanceIntermission(remaining); }
+
+function gameKey(game, type, key) {
+  game().windowEvents.get(type)({ key, target: game().canvas, repeat: false, preventDefault() {} });
+}
+
+function memoryStorage() {
+  const values = new Map();
+  return { values, getItem: key => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, String(value)), removeItem: key => values.delete(key) };
+}
 
 function bootGame(storage, { storageGetterThrows = false, reducedMotion = false, width = 800, height = 600 } = {}) {
   const windowEvents = new Map();
@@ -35,8 +45,8 @@ function bootGame(storage, { storageGetterThrows = false, reducedMotion = false,
       addEventListener: (type, handler) => handlers.set(type, handler),
       click() { if (!this.disabled) handlers.get('click')?.(); } };
   });
-  const accessibleActions = makeButtons('action', ['campaign','campaign-map','map-prev','map-next','map-play','endless','start','daily','pause','skip-intermission','retry-save','retry','menu','ship','hangar','hangar-page','shop','levels','missions','stats','settings','difficulty','import','export','shop-prev','shop-next','level-prev','level-next','continue']);
-  const accessibleUpgrades = makeButtons('buyUpgrade', Array.from({ length: 11 }, (_, i) => String(i)));
+  const accessibleActions = makeButtons('action', ['coop','leaderboard','leaderboard-prev','leaderboard-next','campaign','campaign-map','map-prev','map-next','map-play','endless','start','daily','pause','skip-intermission','retry-save','retry','menu','ship','hangar','hangar-page','shop','levels','missions','stats','settings','difficulty','import','export','shop-prev','shop-next','level-prev','level-next','continue']);
+  const accessibleUpgrades = makeButtons('buyUpgrade', Array.from({ length: 12 }, (_, i) => String(i)));
   const accessibleSkillBuys = makeButtons('buySkill', ['0','1','2','3']);
   const accessibleSkills = makeButtons('skill', ['0','1','2','3']);
   const accessibleClasses = makeButtons('class', ['0','1','2','3']);
@@ -85,7 +95,7 @@ function bootGame(storage, { storageGetterThrows = false, reducedMotion = false,
     setTimeout: () => 0,
   };
   Object.defineProperty(sandbox, 'localStorage', { get() { if (storageGetterThrows) throw new Error('storage denied'); return storage; } });
-  vm.runInNewContext(`${inlineScript}\nglobalThis.probe=()=>({state:st,meta:M,readOnly:saveReadOnly,reason:saveReason,recoveryRaw:()=>saveRecoveryRaw,start,startCampaign,campaignCommitMiniNode,campaignCommitBossNode,acknowledgeCampaignSettlement,retryCampaignSave,pause,end,hit,sv,advanceSkin,importSave,importInput,importHandlers,location,ok,skin:()=>skin,skinName:()=>SK[skin][0],skinColor:()=>SK[skin][1],growthCatalog:()=>JSON.parse(JSON.stringify({UP,SKL,SKD,CLS,MODS,MUT})),devTools:typeof DEV==='undefined'?null:{pages:devPages,apply:devApply,summary:devSummary},geometry:()=>({S,W,H,dpr,x:px,ox,PW,canvasWidth:cv.width,canvasHeight:cv.height,py,hh,hw}),skillPosition:i=>({x:sx(i),y:H-32}),setTheme:index=>{t=index*25;lvp=index;th=index;st='play'},themeIndex:()=>th,setGalleryLevel:index=>{th=index;lp=index;st='lv'},levelData:()=>({themes:TH,lore:LORE,obstacles:OB,bosses:BN,hints:LEVEL_HINTS}),isLevelUnlocked:levelUnlocked,drawHazard:index=>{th=index;hzArt({x:100,y:80,w:38,h:30,v:150,theme:index})},drawOrbMark:index=>orbMark(100,80,index),drawBullet,drawUnlockPreview,unlockPreviewState,unlockPreviewStaticSteps,showUnlock,accessibleStatusText,weaponMuzzleLocal,weaponWorldMuzzle,fireAutoCannon,fireBlaster,weaponShots:()=>bu.map(b=>({...b})),weaponFlashMask:()=>bflSides,setBlasterTier:value=>{M.kt[3]=value},setBlasterActive:value=>{bl=value},setShipPose:(x,target,splash=0)=>{px=x;tx=target;spls=splash},clearWeaponShots:()=>{bu=[];bAlt=false;bflSides=0;bfl=af=0},drawShip:(x=100,y=100,k=1)=>ship(x,y,k,0),setAutoCannon:(level,flash=0)=>{M.u[11]=level;af=flash},setBlasterUnlocked:value=>{M.k[3]=value?1:0},setShipClass:value=>{M.cls=value},setSkin:value=>{skin=(value+SK.length)%SK.length},setHighContrast:value=>{M.s.hc=value?1:0},setLowEffects:value=>{M.s.l=value?1:0},setReducedMotion:value=>{rm=!!value},canvasCalls:()=>canvasCalls,clearCanvasCalls:()=>canvasCalls.length=0,prepareSpawnTheme:index=>{t=index*25;lvp=index;th=index;st='play';wv=0;bo=null},setDifficulty:index=>{gm=index},setMissionRotation:index=>{mh=index},runKind:()=>runKind,campaignNode:()=>campaignNode,campaignWorld:()=>campaignWorld,setShipX:value=>{px=tx=value},animationTime:()=>last,campaignTransition:()=>({remaining:campaignTransitionRemaining,duration:campaignTransitionDuration,boss:campaignTransitionBoss,completed:campaignTransitionCompleted,paused:campaignIntermissionPaused,simTime:t,score:sc,spawnTimer:tm,objects:objs.length,shipX:px,bannerTimer:bt,toastTimer:tt}),skipBounds:campaignSkipBounds,advanceIntermission:seconds=>{const target=Math.max(0,campaignTransitionRemaining-seconds);let now=last;while(st=='campaignIntermission'&&campaignTransitionRemaining>target){now+=Math.min(50,Math.max(1,(campaignTransitionRemaining-target)*1000));frame(now)}},campaignRun:()=>campaignRun,campaignConfiguration:()=>JSON.parse(JSON.stringify(CAMPAIGN_WORLDS)),campaignStageProfile:()=>campaignNodeConfig(campaignWorld,campaignNode),campaignProfile:(world,node)=>campaignNodeConfig(world,node),campaignStageDuration:campaignStageSeconds,campaignPaceSeconds:(world,node,elapsed)=>campaignPaceSeconds(campaignNodeConfig(world,node),elapsed),campaignSpawnInterval:(world,node,elapsed)=>campaignSpawnInterval(campaignNodeConfig(world,node),elapsed),validateCampaignWorlds,setCampaignDuration:(world,node,seconds)=>{const stage=CAMPAIGN_WORLDS[world].stages[node];stage.durationSeconds=seconds;if(stage.warningAt)stage.warningAt=Math.min(20,seconds-5)},prepareCampaignProfile:(world,node)=>{runKind='campaign';campaignWorld=world;campaignNode=node;campaignAttempt=emptyCampaignRewards();campaignCuePlayed=false;campaignBossDefeated=false;st='play';t=0;tm=0;sc=0;th=world;objs=[];spd=180},campaignWallCenter, campaignRewards:()=>plainCampaignAttempt(),missionPlan:()=>[0,1,2].map(i=>MP[(mh+i*2)%6]),mp,waveState:()=>({active:wv,elapsed:wt,next:nw}),bossActive:()=>!!bo,bossSummary:()=>({big:bo?.big,label:bn,hp:bo?.hp}),forceCampaignBoss:()=>{bo={x:100};bossDown()},campaignOrbAtShip:()=>{tm=100;objs=[{k:'o',x:px,y:py,r:10,v:0}]},forceFatal:()=>{li=0;dth=1;end()},setRandom:value=>{rngCalls=0;rnd=()=>{rngCalls++;return value}},randomCalls:()=>rngCalls,captureCampaignSpawns:()=>{const events=[],original=spawnForLevel;spawnForLevel=()=>{const before=objs.length;original();events.push(...objs.slice(before).map(o=>({k:o.k,s:o.s})));};return events},spawnForLevel,objects:()=>objs,levelDuration:()=>LEVEL_SECONDS,campaignDuration,gameSpeed:()=>spd,stageIndex:currentLevelIndex,stageProgress:()=>({lvp,campaignClear}),stageRecords:()=>M.lv,prepareStage:(seconds,previous)=>{runKind='legacy';st='play';t=seconds;lvp=previous;th=currentLevelIndex();sc=180;rc=17;rk=2;rb=1;s0=80;tm=100;campaignClear=false},advanceGame:upd,canvas:cv,page:document,statusText:()=>gameStatus.textContent,reducedMotion:()=>rm,motion,deathSlowdown:()=>dth,drawFrame:(time=16)=>frame(Math.max(last+16,time)),scheduledFrames:()=>animationFrames.length,refreshAccessibleControls,keys:()=>[kl,kr,drag],steeringTarget:()=>tx,shopPage:()=>pg,levelPage:()=>lp,cooldowns:()=>cd,winReady:()=>winContinueReady,elapsed:()=>performance.now()-ot2,prepareWin:()=>{st='win';bc++;ot2=performance.now();refreshAccessibleControls()},continueAfterBoss,setNow:value=>{clock.now=value},windowEvents,documentEvents,canvasEvents,mediaEvents,accessibleActions,accessibleSettings,accessibleUpgrades,accessibleSkillBuys,accessibleSkills,accessibleClasses,accessibleModules});function plainCampaignAttempt(){return campaignAttempt?JSON.parse(JSON.stringify(campaignAttempt)):null}`, sandbox);
+  vm.runInNewContext(`${inlineScript}\nglobalThis.probe=()=>({state:st,meta:M,readOnly:saveReadOnly,reason:saveReason,recoveryRaw:()=>saveRecoveryRaw,start,startCoop,retryRun,saveLeaderboardRecord,leaderboardState:()=>({records:leaderboard,readOnly:leaderboardReadOnly,available:leaderboardAvailable,rank:lastLeaderboardRank,best,dbest}),coopState:()=>({duo,px,tx,p2x,p2tx,kl,kr,p2l,p2r,li,sh,sc,inv}),setObjects:rows=>{objs=rows;tm=100},setScore:value=>{sc=value},startCampaign,campaignCommitMiniNode,campaignCommitBossNode,acknowledgeCampaignSettlement,retryCampaignSave,pause,end,hit,sv,advanceSkin,importSave,importInput,importHandlers,location,ok,skin:()=>skin,skinName:()=>SK[skin][0],skinColor:()=>SK[skin][1],growthCatalog:()=>JSON.parse(JSON.stringify({UP,SKL,SKD,CLS,MODS,MUT})),devTools:typeof DEV==='undefined'?null:{pages:devPages,apply:devApply,summary:devSummary},geometry:()=>({S,W,H,dpr,x:px,ox,PW,canvasWidth:cv.width,canvasHeight:cv.height,py,hh,hw}),skillPosition:i=>({x:sx(i),y:H-32}),setTheme:index=>{t=index*25;lvp=index;th=index;st='play'},themeIndex:()=>th,setGalleryLevel:index=>{th=index;lp=index;st='lv'},levelData:()=>({themes:TH,lore:LORE,obstacles:OB,bosses:BN,hints:LEVEL_HINTS}),isLevelUnlocked:levelUnlocked,drawHazard:index=>{th=index;hzArt({x:100,y:80,w:38,h:30,v:150,theme:index})},drawOrbMark:index=>orbMark(100,80,index),drawBullet,drawUnlockPreview,unlockPreviewState,unlockPreviewStaticSteps,showUnlock,accessibleStatusText,weaponMuzzleLocal,weaponWorldMuzzle,fireAutoCannon,fireBlaster,weaponShots:()=>bu.map(b=>({...b})),weaponFlashMask:()=>bflSides,setBlasterTier:value=>{M.kt[3]=value},setBlasterActive:value=>{bl=value},setShipPose:(x,target,splash=0)=>{px=x;tx=target;spls=splash},clearWeaponShots:()=>{bu=[];bAlt=false;bflSides=0;bfl=af=0},drawShip:(x=100,y=100,k=1)=>ship(x,y,k,0),setAutoCannon:(level,flash=0)=>{M.u[11]=level;af=flash},setBlasterUnlocked:value=>{M.k[3]=value?1:0},setShipClass:value=>{M.cls=value},setSkin:value=>{skin=(value+SK.length)%SK.length},setHighContrast:value=>{M.s.hc=value?1:0},setLowEffects:value=>{M.s.l=value?1:0},setReducedMotion:value=>{rm=!!value},canvasCalls:()=>canvasCalls,clearCanvasCalls:()=>canvasCalls.length=0,prepareSpawnTheme:index=>{t=index*25;lvp=index;th=index;st='play';wv=0;bo=null},setDifficulty:index=>{gm=index},setMissionRotation:index=>{mh=index},runKind:()=>runKind,campaignNode:()=>campaignNode,campaignWorld:()=>campaignWorld,setShipX:value=>{px=tx=value},animationTime:()=>last,campaignTransition:()=>({remaining:campaignTransitionRemaining,duration:campaignTransitionDuration,boss:campaignTransitionBoss,completed:campaignTransitionCompleted,paused:campaignIntermissionPaused,simTime:t,score:sc,spawnTimer:tm,objects:objs.length,shipX:px,bannerTimer:bt,toastTimer:tt}),skipBounds:campaignSkipBounds,advanceIntermission:seconds=>{const target=Math.max(0,campaignTransitionRemaining-seconds);let now=last;while(st=='campaignIntermission'&&campaignTransitionRemaining>target){now+=Math.min(50,Math.max(1,(campaignTransitionRemaining-target)*1000));frame(now)}},campaignRun:()=>campaignRun,campaignConfiguration:()=>JSON.parse(JSON.stringify(CAMPAIGN_WORLDS)),campaignStageProfile:()=>campaignNodeConfig(campaignWorld,campaignNode),campaignProfile:(world,node)=>campaignNodeConfig(world,node),campaignStageDuration:campaignStageSeconds,campaignPaceSeconds:(world,node,elapsed)=>campaignPaceSeconds(campaignNodeConfig(world,node),elapsed),campaignSpawnInterval:(world,node,elapsed)=>campaignSpawnInterval(campaignNodeConfig(world,node),elapsed),validateCampaignWorlds,setCampaignDuration:(world,node,seconds)=>{const stage=CAMPAIGN_WORLDS[world].stages[node];stage.durationSeconds=seconds;if(stage.warningAt)stage.warningAt=Math.min(20,seconds-5)},prepareCampaignProfile:(world,node)=>{runKind='campaign';campaignWorld=world;campaignNode=node;campaignAttempt=emptyCampaignRewards();campaignCuePlayed=false;campaignBossDefeated=false;st='play';t=0;tm=0;sc=0;th=world;objs=[];spd=180},campaignWallCenter, campaignRewards:()=>plainCampaignAttempt(),missionPlan:()=>[0,1,2].map(i=>MP[(mh+i*2)%6]),mp,waveState:()=>({active:wv,elapsed:wt,next:nw}),bossActive:()=>!!bo,bossSummary:()=>({big:bo?.big,label:bn,hp:bo?.hp}),forceCampaignBoss:()=>{bo={x:100};bossDown()},campaignOrbAtShip:()=>{tm=100;objs=[{k:'o',x:px,y:py,r:10,v:0}]},forceFatal:()=>{li=0;dth=1;end()},setRandom:value=>{rngCalls=0;rnd=()=>{rngCalls++;return value}},randomCalls:()=>rngCalls,captureCampaignSpawns:()=>{const events=[],original=spawnForLevel;spawnForLevel=()=>{const before=objs.length;original();events.push(...objs.slice(before).map(o=>({k:o.k,s:o.s})));};return events},spawnForLevel,objects:()=>objs,levelDuration:()=>LEVEL_SECONDS,campaignDuration,gameSpeed:()=>spd,stageIndex:currentLevelIndex,stageProgress:()=>({lvp,campaignClear}),stageRecords:()=>M.lv,prepareStage:(seconds,previous)=>{runKind='legacy';st='play';t=seconds;lvp=previous;th=currentLevelIndex();sc=180;rc=17;rk=2;rb=1;s0=80;tm=100;campaignClear=false},advanceGame:upd,canvas:cv,page:document,statusText:()=>gameStatus.textContent,reducedMotion:()=>rm,motion,deathSlowdown:()=>dth,drawFrame:(time=16)=>frame(Math.max(last+16,time)),scheduledFrames:()=>animationFrames.length,refreshAccessibleControls,keys:()=>[kl,kr,drag],steeringTarget:()=>tx,shopPage:()=>pg,levelPage:()=>lp,cooldowns:()=>cd,winReady:()=>winContinueReady,elapsed:()=>performance.now()-ot2,prepareWin:()=>{st='win';bc++;ot2=performance.now();refreshAccessibleControls()},continueAfterBoss,setNow:value=>{clock.now=value},windowEvents,documentEvents,canvasEvents,mediaEvents,accessibleActions,accessibleSettings,accessibleUpgrades,accessibleSkillBuys,accessibleSkills,accessibleClasses,accessibleModules});function plainCampaignAttempt(){return campaignAttempt?JSON.parse(JSON.stringify(campaignAttempt)):null}`, sandbox);
   return sandbox.probe;
 }
 
@@ -2326,6 +2336,209 @@ test('unlocked and cleared later-level gallery cards render from saved progress'
   assert.doesNotThrow(() => game().drawFrame(32), 'level 7 cleared card');
 });
 
+test('solo steering tracks physical aliases until every held key is released', () => {
+  const game = bootGame(memoryStorage());
+  game().start(0);
+  gameKey(game, 'keydown', 'ArrowLeft');
+  gameKey(game, 'keydown', 'a');
+  gameKey(game, 'keyup', 'a');
+  assert.equal(game().coopState().kl, 1, 'the held arrow still steers after A is released');
+  gameKey(game, 'keyup', 'ArrowLeft');
+  assert.equal(game().coopState().kl, 0);
+  gameKey(game, 'keydown', 'd');
+  gameKey(game, 'keydown', 'ArrowRight');
+  gameKey(game, 'keyup', 'ArrowRight');
+  assert.equal(game().coopState().kr, 1, 'the held D key still steers after Right is released');
+  gameKey(game, 'keyup', 'd');
+  assert.equal(game().coopState().kr, 0);
+});
+
+test('co-op pilots steer independently and pointer movement cannot take over either pilot', () => {
+  const game = bootGame(memoryStorage());
+  game().accessibleActions.find(b => b.dataset.action === 'coop').click();
+  assert.equal(game().coopState().duo, 1);
+  const before = game().coopState();
+  gameKey(game, 'keydown', 'a');
+  gameKey(game, 'keydown', 'ArrowRight');
+  game().advanceGame(.05);
+  const moved = game().coopState();
+  assert.ok(moved.px < before.px && moved.p2x > before.p2x);
+  gameKey(game, 'keyup', 'ArrowRight');
+  assert.equal(game().coopState().kl, 1, 'P2 release must not release P1');
+  assert.equal(game().coopState().p2r, 0);
+  gameKey(game, 'keyup', 'a');
+  const targets = game().coopState();
+  game().canvasEvents.get('pointermove')({ pointerType: 'mouse', clientX: 0, clientY: 100 });
+  assert.equal(game().coopState().tx, targets.tx);
+  assert.equal(game().coopState().p2tx, targets.p2tx);
+  game().canvas.clientWidth = 320;
+  game().canvas.clientHeight = 480;
+  game().windowEvents.get('resize')();
+  const { ox, PW } = game().geometry();
+  const resized = game().coopState();
+  for (const x of [resized.px, resized.p2x]) assert.ok(x >= ox + 14 && x <= ox + PW - 14);
+});
+
+test('pause, focus loss, run end, and restart discard steering without remapping P2 into P1', () => {
+  const game = bootGame(memoryStorage());
+  const noKeys = () => {
+    const s = game().coopState();
+    assert.deepEqual([s.kl, s.kr, s.p2l, s.p2r], [0, 0, 0, 0]);
+  };
+  for (const coop of [false, true]) {
+    coop ? game().startCoop() : game().start(0);
+    gameKey(game, 'keydown', 'd');
+    gameKey(game, 'keydown', 'ArrowLeft');
+    game().pause();
+    noKeys();
+    gameKey(game, 'keydown', 'ArrowRight');
+    noKeys();
+    gameKey(game, 'keyup', 'ArrowRight');
+    game().pause();
+    game().setObjects([]);
+    const before = game().coopState();
+    game().advanceGame(.05);
+    assert.equal(game().coopState().px, before.px);
+    assert.equal(game().coopState().p2x, before.p2x);
+    gameKey(game, 'keydown', 'd');
+    game().windowEvents.get('blur')();
+    noKeys();
+    game().pause();
+    gameKey(game, 'keydown', 'a');
+    game().end();
+    noKeys();
+    gameKey(game, 'keydown', 'd');
+    game().retryRun();
+    noKeys();
+    assert.equal(game().coopState().duo, +coop, 'retry retains the selected mode');
+  }
+});
+
+test('both co-op pilots share pickups, lives, hit protection, and fire their own weapons', () => {
+  const game = bootGame(memoryStorage());
+  game().startCoop();
+  const { py } = game().geometry(), before = game().coopState();
+  game().setObjects([{ k: 'o', x: before.p2x, y: py, r: 10, v: 0 }]);
+  game().advanceGame(.016);
+  assert.equal(game().meta.o, 1, 'P2 can collect a shared orb');
+  game().setObjects([{ k: 'o', x: before.px, y: py, r: 10, v: 0 }]);
+  game().advanceGame(.016);
+  assert.equal(game().meta.o, 2, 'P1 can also collect');
+  game().setObjects([0, 1].map(id => ({ k: 'h', x: (id ? before.p2x : before.px) - 8, y: py - 8, w: 16, h: 16, v: 0 })));
+  game().advanceGame(.016);
+  assert.equal(game().coopState().li, before.li - 1, 'simultaneous collisions lose one shared heart during invulnerability');
+  game().setObjects([]);
+  game().setAutoCannon(1);
+  game().setBlasterActive(2);
+  game().clearWeaponShots();
+  game().advanceGame(.016);
+  const shots = plain(game().weaponShots());
+  for (const owner of [0, 1]) {
+    assert.equal(shots.filter(b => b.owner === owner && b.bs).length, 1);
+    assert.equal(shots.filter(b => b.owner === owner && !b.bs).length, 1);
+  }
+  assert.ok(shots.some(b => b.owner === 1 && Math.abs(b.x - before.p2x) < 10));
+});
+
+test('local leaderboards cap each mode, retain stable ties, and validate imported data', () => {
+  let rows = [];
+  for (const mode of ['solo', 'daily', 'coop']) {
+    for (let score = 0; score < 12; score++) rows = api.insertLeaderboardRecord(rows, { mode, score, date: '2026-11-10' }).records;
+  }
+  assert.equal(rows.length, 30);
+  for (const mode of ['solo', 'daily', 'coop']) {
+    assert.deepEqual(plain(rows.filter(r => r.mode === mode).map(r => r.score)), [11,10,9,8,7,6,5,4,3,2]);
+  }
+  const low = api.insertLeaderboardRecord(rows, { mode: 'coop', score: 1, date: '2026-11-10' });
+  assert.equal(low.rank, 0);
+  const tie = api.insertLeaderboardRecord(rows, { mode: 'coop', score: 11, date: '2026-11-10' });
+  assert.equal(tie.rank, 2, 'existing identical records retain their order');
+  for (const bad of [null, {}, [{mode:'campaign',score:10,date:'2026-11-10'}], [{mode:'solo',score:-1,date:'2026-11-10'}], [{mode:'solo',score:10,date:'2026-02-30'}]]) {
+    assert.throws(() => api.validateLeaderboard(bad));
+  }
+});
+
+test('run settlement records each mode once, keeps solo best separate, and reloads rankings', () => {
+  const storage = memoryStorage(), game = bootGame(storage);
+  for (const [kind, score] of [['solo', 250], ['daily', 300], ['coop', 900]]) {
+    kind === 'coop' ? game().startCoop() : game().start(kind === 'daily' ? 1 : 0);
+    game().setScore(score);
+    game().end();
+    game().end();
+  }
+  assert.equal(game().meta.g, 3, 'a repeated settlement cannot record a second run');
+  const state = game().leaderboardState();
+  assert.equal(state.best, 250);
+  assert.equal(state.dbest, 300);
+  assert.deepEqual(plain(state.records.map(r => [r.mode, r.score])), [['solo',250],['daily',300],['coop',900]]);
+  assert.deepEqual(plain(bootGame(storage)().leaderboardState().records), plain(state.records));
+});
+
+test('ranking write failures stay playable and a later successful run persists the whole session', () => {
+  const storage = memoryStorage();
+  let blocked = false;
+  const setItem = storage.setItem;
+  storage.setItem = (key, value) => { if (blocked && key.endsWith('leaderboard')) throw Error('quota'); setItem(key, value); };
+  const game = bootGame(storage);
+  blocked = true;
+  game().startCoop();game().setScore(650);game().end();
+  assert.equal(game().leaderboardState().available, false);
+  assert.match(game().accessibleStatusText(), /not saved|session only/i);
+  game().refreshAccessibleControls();
+  game().accessibleActions.find(b => b.dataset.action === 'menu').click();
+  game().accessibleActions.find(b => b.dataset.action === 'leaderboard').click();
+  game().accessibleActions.find(b => b.dataset.action === 'leaderboard-next').click();
+  assert.match(game().statusText(), /not saved|session only/i, 'mode switching must also announce unsaved rankings');
+  blocked = false;
+  game().startCoop();game().setScore(400);game().end();
+  assert.equal(game().leaderboardState().available, true, 'ranking storage is retried after a temporary failure');
+  assert.deepEqual(plain(bootGame(storage)().leaderboardState().records.map(r => r.score)), [650,400]);
+});
+
+test('unread ranking storage is preserved until recovery merges saved and session records', () => {
+  const storage = memoryStorage(), key = api.META_KEY.replace(/meta$/, 'leaderboard');
+  const original = JSON.stringify([{ mode: 'coop', score: 1000, date: '2026-11-09' }]);
+  storage.values.set(key, original);
+  const getItem = storage.getItem;
+  let blocked = true;
+  storage.getItem = name => { if (blocked && name === key) throw Error('read blocked'); return getItem(name); };
+  const game = bootGame(storage);
+  game().startCoop();game().setScore(400);game().end();
+  assert.equal(storage.values.get(key), original, 'a failed read must not overwrite an unknown saved ranking');
+  blocked = false;
+  game().startCoop();game().setScore(500);game().end();
+  assert.deepEqual(JSON.parse(storage.getItem(key)).map(r => r.score), [1000,500,400]);
+  assert.equal(game().leaderboardState().available, true);
+});
+
+test('corrupt ranking bytes survive new runs and the result does not claim a top-ten placement', () => {
+  const storage = memoryStorage(), key = api.META_KEY.replace(/meta$/, 'leaderboard');
+  storage.values.set(key, '{broken ranking');
+  const game = bootGame(storage);
+  game().startCoop();game().setScore(700);game().end();
+  assert.equal(storage.values.get(key), '{broken ranking');
+  assert.equal(game().leaderboardState().readOnly, true);
+  assert.match(game().accessibleStatusText(), /ranking.*unavailable/i);
+  assert.doesNotMatch(game().accessibleStatusText(), /outside.*top ten/i);
+});
+
+test('ranking recovery files round-trip all modes and roll back a failed ranking import', () => {
+  const rows = ['solo','daily','coop'].map((mode,i) => ({ mode, score: (i+1)*150, date: '2026-11-10' }));
+  const raw = api.exportPayload(null, { c: 700 }, { best: 150, dailyDate: '2026-11-10', dailyBest: 300, skin: 2, leaderboard: rows });
+  const storage = memoryStorage(), key = api.META_KEY.replace(/meta$/, 'leaderboard');
+  api.applySaveImport(storage, raw);
+  assert.deepEqual(JSON.parse(storage.getItem(key)), rows);
+  const before = new Map(storage.values), originalSet = storage.setItem;
+  let failOnce = true;
+  storage.setItem = (name, value) => { if (name === key && failOnce) { failOnce = false; throw Error('quota'); } originalSet(name,value); };
+  const replacement = api.exportPayload(null, { c: 1 }, { best: 2, dailyDate: '2026-11-10', dailyBest: 3, skin: 1, leaderboard: [] });
+  assert.throws(() => api.applySaveImport(storage, replacement), /quota/);
+  for (const [name, value] of before) if (!name.endsWith('pre-import-backup')) assert.equal(storage.getItem(name), value);
+  const legacy = api.exportPayload(null, { c: 4 }, { best: 5, dailyDate: '2026-11-10', dailyBest: 6, skin: 0 });
+  api.applySaveImport(storage, legacy);
+  assert.deepEqual(JSON.parse(storage.getItem(key)), rows, 'older exports without rankings leave current rankings intact');
+});
+
 test('ship color button cycles the five core style-guide colorways without score gates', () => {
   const prefix = sourceName.includes('-dev') ? 'neon-drift-dev' : 'neon-drift';
   const skinKey = prefix + '-skin';
@@ -2337,8 +2550,8 @@ test('ship color button cycles the five core style-guide colorways without score
   const { S, W, H } = game().geometry();
   const canvasClick = game().canvasEvents.get('pointerdown');
   const canvasUp = game().canvasEvents.get('pointerup');
-  const click = (y, pointerId) => { canvasClick({ preventDefault() {}, pointerId, pointerType: 'touch', clientX: S * W / 2, clientY: S * y }); canvasUp({ pointerId, pointerType: 'touch' }); };
-  click(H / 2 + 110, 1);
+  const click = (y, pointerId, x = W / 2) => { canvasClick({ preventDefault() {}, pointerId, pointerType: 'touch', clientX: S * x, clientY: S * y }); canvasUp({ pointerId, pointerType: 'touch' }); };
+  click(H / 2 + 110, 1, W / 2 - 56);
   assert.equal(game().state, 'hangar', 'the menu Hangar action opens ship options');
   for (const [name, color] of expected) {
     click(H / 2 + 57, 2);
